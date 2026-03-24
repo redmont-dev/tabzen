@@ -118,7 +118,7 @@ export function FeatureGrid() {
   return (
     <section id="features" class={styles.section}>
       <div class={styles.header}>
-        <h2>Less chaos. More flow.</h2>
+        <h2>Less chaos. <strong>More flow.</strong></h2>
         <p>All the tools you need to tame your tabs.</p>
       </div>
       <div class={styles.grid}>
