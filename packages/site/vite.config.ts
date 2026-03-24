@@ -7,6 +7,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@tabzen/shared': resolve(__dirname, '../../shared'),
+      'preact/jsx-dev-runtime': resolve(__dirname, 'node_modules/preact/jsx-runtime'),
+      'preact/jsx-runtime': resolve(__dirname, 'node_modules/preact/jsx-runtime'),
       'preact': resolve(__dirname, 'node_modules/preact'),
     },
   },
