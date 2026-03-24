@@ -6,6 +6,9 @@ import { registerSessionManager } from './services/session-manager';
 import { registerSearchIndex } from './services/search-index';
 import { registerAnalyticsCollector } from './services/analytics-collector';
 import { initPortManager } from './ports';
+import { SyncStorage } from '@/data/storage';
+import { DEFAULT_SETTINGS, STORAGE_KEYS } from '@/shared/constants';
+import type { Settings } from '@/data/types';
 
 const bus = new MessageBus();
 
@@ -19,6 +22,18 @@ registerAnalyticsCollector(bus);
 
 bus.listen();
 bus.register('ping', async () => ({ ok: true, data: 'pong' }));
+
+bus.register('getSettings', async () => {
+  const settings = await SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+  return { ok: true, data: settings };
+});
+
+bus.register('updateSettings', async (req) => {
+  const current = await SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+  const merged = { ...current, ...req.settings };
+  await SyncStorage.set(STORAGE_KEYS.SETTINGS, merged);
+  return { ok: true, data: merged };
+});
 
 // Initialize real-time port connections for UI
 initPortManager();
