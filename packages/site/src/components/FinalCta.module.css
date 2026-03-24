@@ -10,6 +10,10 @@
   margin-bottom: 12px;
 }
 
+.section h2 strong {
+  font-weight: 700;
+}
+
 .section p {
   font-size: 14px;
   color: var(--color-text-secondary);

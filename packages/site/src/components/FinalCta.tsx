@@ -6,7 +6,7 @@ export function FinalCta() {
       <h2>
         Stop managing tabs.
         <br />
-        Let Tabzen do it.
+        <strong>Let Tabzen do it.</strong>
       </h2>
       <p>Free. Open source. No account required. Your data stays on your device.</p>
       <a href="#" class={styles.cta}>
