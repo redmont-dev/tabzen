@@ -1,4 +1,4 @@
-import type { TabGroupColor, Settings } from '@/data/types';
+import type { TabGroupColor, Settings, Workspace } from '@/data/types';
 
 export const TAB_GROUP_COLORS: TabGroupColor[] = [
   'grey', 'blue', 'red', 'yellow', 'green',
@@ -46,6 +46,30 @@ export const STORAGE_KEYS = {
   COLOR_ORDER: 'colorOrder',
 } as const;
 
+export const NON_RESTORABLE_PROTOCOLS = [
+  'chrome://',
+  'chrome-extension://',
+  'about:',
+  'edge://',
+];
+
+export const AUTO_SAVE_ALARM_NAME = 'tabzen-auto-save';
+
+export function createDefaultWorkspace(): Workspace {
+  return {
+    id: 'default',
+    name: 'Default',
+    icon: '',
+    rules: [],
+    priorityRules: [],
+    settings: { ...DEFAULT_WORKSPACE_SETTINGS },
+    windowIds: [],
+    createdAt: Date.now(),
+  };
+}
+
 export const MAX_ANALYTICS_DAYS = 90;
+export const ANALYTICS_SNAPSHOT_INTERVAL = 30; // minutes
+export const ANALYTICS_ALARM_NAME = 'tabzen-analytics-snapshot';
 export const INDEXEDDB_NAME = 'tabzen';
 export const INDEXEDDB_VERSION = 1;

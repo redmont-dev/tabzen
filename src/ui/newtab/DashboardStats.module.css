@@ -1,0 +1,23 @@
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.stat {
+  text-align: center;
+}
+
+.statValue {
+  font-size: 24px;
+  font-weight: 300;
+  letter-spacing: -0.5px;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.statLabel {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}

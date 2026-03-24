@@ -5,6 +5,8 @@ import { registerWorkspaceManager } from './services/workspace-manager';
 import { registerSessionManager } from './services/session-manager';
 import { registerSearchIndex } from './services/search-index';
 import { registerAnalyticsCollector } from './services/analytics-collector';
+import { registerContextMenus } from './services/context-menus';
+import { registerRulePacks } from './services/rule-packs';
 import { initPortManager } from './ports';
 import { SyncStorage } from '@/data/storage';
 import { DEFAULT_SETTINGS, STORAGE_KEYS } from '@/shared/constants';
@@ -15,10 +17,21 @@ const bus = new MessageBus();
 // RuleEngine must register before TabManager so applyRules is available for cleanUp
 registerRuleEngine(bus);
 registerTabManager(bus, applyRules);
-registerWorkspaceManager(bus);
-registerSessionManager(bus);
+registerWorkspaceManager(bus, applyRules);
 registerSearchIndex(bus);
-registerAnalyticsCollector(bus);
+
+// AnalyticsCollector is async (opens IndexedDB), so we initialize it separately
+registerAnalyticsCollector(bus).catch(err => {
+  console.error('Failed to initialize AnalyticsCollector:', err);
+});
+
+registerContextMenus(bus);
+registerRulePacks(bus);
+
+// SessionManager is async (opens IndexedDB), so we initialize it separately
+registerSessionManager(bus).catch(err => {
+  console.error('Failed to initialize SessionManager:', err);
+});
 
 bus.listen();
 bus.register('ping', async () => ({ ok: true, data: 'pong' }));

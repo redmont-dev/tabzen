@@ -89,6 +89,17 @@ export interface AnalyticsSnapshot {
   sessionsUsed: number;
 }
 
+export type AnalyticsTimeRange = 'today' | 'week' | 'month' | '90d';
+
+export interface DashboardStats {
+  tabsOpened: number;
+  peakTabCount: number;
+  duplicatesBlocked: number;
+  sessionsUsed: number;
+  topDomains: { domain: string; count: number }[];
+  groupUsage: { name: string; color: string; count: number }[];
+}
+
 export interface Settings {
   dedupEnabled: boolean;
   stripFragments: boolean;
