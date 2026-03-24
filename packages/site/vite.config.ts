@@ -7,6 +7,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@tabzen/shared': resolve(__dirname, '../../shared'),
+      'preact': resolve(__dirname, 'node_modules/preact'),
     },
   },
   build: {

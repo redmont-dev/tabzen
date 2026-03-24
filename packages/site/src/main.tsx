@@ -1,7 +1,5 @@
 import { render } from 'preact';
-
-function App() {
-  return <div>Tabzen site — coming soon</div>;
-}
+import { App } from './App';
+import './styles/global.css';
 
 render(<App />, document.getElementById('app')!);
