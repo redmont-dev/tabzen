@@ -56,7 +56,7 @@ function StarRating({ count }: { count: number }) {
 
 export function Reviews() {
   return (
-    <section class={styles.section}>
+    <section id="reviews" class={styles.section}>
       <div class={styles.header}>
         <h2>
           People are <strong>saying things.</strong>
