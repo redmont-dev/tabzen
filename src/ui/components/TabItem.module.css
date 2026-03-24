@@ -1,0 +1,89 @@
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px 5px 32px;
+  cursor: pointer;
+  min-height: 30px;
+  position: relative;
+}
+
+.item:hover {
+  background: var(--bg-hover);
+}
+
+.itemActive {
+  font-weight: 500;
+}
+
+.favicon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  object-fit: contain;
+}
+
+.faviconPlaceholder {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  border-radius: 2px;
+  background: var(--border);
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.priority {
+  color: var(--group-yellow);
+  font-size: 10px;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.close {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity 0.1s, color 0.1s;
+  padding: 0;
+}
+
+.item:hover .close {
+  opacity: 1;
+}
+
+.close:hover {
+  color: var(--text-primary);
+}
+
+.url {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Ungrouped tabs have less left padding */
+.itemUngrouped {
+  padding-left: 12px;
+}
