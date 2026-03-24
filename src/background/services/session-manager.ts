@@ -8,6 +8,7 @@ import {
   NON_RESTORABLE_PROTOCOLS,
   AUTO_SAVE_ALARM_NAME,
 } from '@/shared/constants';
+import { backupSessionIfEnabled, deleteDriveFileIfEnabled } from './drive-sync';
 
 function generateId(): string {
   return `sess-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -222,12 +223,14 @@ async function configureAutoSave(db: TabzenDB): Promise<void> {
   }
 }
 
-export async function registerSessionManager(bus: MessageBus): Promise<void> {
-  const db = new TabzenDB(`tabzen-sessions-${Math.random().toString(36).slice(2, 8)}`);
-  await db.open();
+export async function registerSessionManager(bus: MessageBus, existingDb?: TabzenDB): Promise<TabzenDB> {
+  const db = existingDb ?? new TabzenDB(`tabzen-sessions-${Math.random().toString(36).slice(2, 8)}`);
+  if (!existingDb) await db.open();
 
   bus.register('saveSession', async (req) => {
     const session = await saveSession(db, req.windowId, req.name, req.source);
+    // Best-effort backup to Drive (non-blocking)
+    backupSessionIfEnabled(db, session).catch(() => {});
     return { ok: true, data: session };
   });
 
@@ -259,6 +262,10 @@ export async function registerSessionManager(bus: MessageBus): Promise<void> {
   });
 
   bus.register('deleteSession', async (req) => {
+    const session = await db.getSession(req.sessionId);
+    if (session?.driveFileId) {
+      deleteDriveFileIfEnabled(session.driveFileId).catch(() => {});
+    }
     await db.deleteSession(req.sessionId);
     return { ok: true };
   });
@@ -306,4 +313,6 @@ export async function registerSessionManager(bus: MessageBus): Promise<void> {
       // Ignore errors during window close
     }
   });
+
+  return db;
 }

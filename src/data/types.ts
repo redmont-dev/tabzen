@@ -91,6 +91,12 @@ export interface AnalyticsSnapshot {
 
 export type AnalyticsTimeRange = 'today' | 'week' | 'month' | '90d';
 
+export interface SyncStatus {
+  enabled: boolean;
+  lastSyncTime: number | null;
+  sessionCount: number;
+}
+
 export interface DashboardStats {
   tabsOpened: number;
   peakTabCount: number;

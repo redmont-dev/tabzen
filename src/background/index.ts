@@ -3,6 +3,7 @@ import { registerTabManager } from './services/tab-manager';
 import { registerRuleEngine, applyRules } from './services/rule-engine';
 import { registerWorkspaceManager } from './services/workspace-manager';
 import { registerSessionManager } from './services/session-manager';
+import { registerDriveSync } from './services/drive-sync';
 import { registerSearchIndex } from './services/search-index';
 import { registerAnalyticsCollector } from './services/analytics-collector';
 import { registerContextMenus } from './services/context-menus';
@@ -29,8 +30,11 @@ registerContextMenus(bus);
 registerRulePacks(bus);
 
 // SessionManager is async (opens IndexedDB), so we initialize it separately
-registerSessionManager(bus).catch(err => {
-  console.error('Failed to initialize SessionManager:', err);
+// DriveSync shares the same DB instance
+registerSessionManager(bus).then(db => {
+  return registerDriveSync(bus, db);
+}).catch(err => {
+  console.error('Failed to initialize SessionManager/DriveSync:', err);
 });
 
 bus.listen();

@@ -42,6 +42,14 @@ interface GetBuiltInPacksRequest { action: 'getBuiltInPacks'; }
 interface ImportRulePackRequest { action: 'importRulePack'; pack: RulePack; }
 interface ExportRulesRequest { action: 'exportRules'; name: string; description?: string; }
 
+// Drive sync messages
+interface EnableSyncRequest { action: 'enableSync'; }
+interface DisableSyncRequest { action: 'disableSync'; }
+interface GetSyncStatusRequest { action: 'getSyncStatus'; }
+interface SyncSessionsRequest { action: 'syncSessions'; }
+interface ImportFromDriveRequest { action: 'importFromDrive'; }
+interface BackupSessionRequest { action: 'backupSession'; sessionId: string; }
+
 export type MessageRequest =
   | SortTabsRequest | RemoveDuplicatesRequest | SortGroupsRequest | CollapseAllRequest
   | SaveSessionRequest | RestoreSessionRequest | RestoreSessionTabsRequest
@@ -53,7 +61,9 @@ export type MessageRequest =
   | PingRequest | GetSuggestedRulesRequest
   | GetAnalyticsRequest | GetDashboardStatsRequest | IncrementAnalyticsCounterRequest
   | TakeAnalyticsSnapshotRequest
-  | GetBuiltInPacksRequest | ImportRulePackRequest | ExportRulesRequest;
+  | GetBuiltInPacksRequest | ImportRulePackRequest | ExportRulesRequest
+  | EnableSyncRequest | DisableSyncRequest | GetSyncStatusRequest
+  | SyncSessionsRequest | ImportFromDriveRequest | BackupSessionRequest;
 
 export type MessageAction = MessageRequest['action'];
 

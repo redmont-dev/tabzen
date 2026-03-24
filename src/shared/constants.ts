@@ -54,6 +54,7 @@ export const NON_RESTORABLE_PROTOCOLS = [
 ];
 
 export const AUTO_SAVE_ALARM_NAME = 'tabzen-auto-save';
+export const SYNC_STATE_KEY = 'tabzen-sync-state';
 
 export function createDefaultWorkspace(): Workspace {
   return {
