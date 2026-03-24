@@ -1,0 +1,8 @@
+export function App() {
+  return (
+    <div style={{ width: 370, minHeight: 200, padding: '14px 16px' }}>
+      <div style={{ fontWeight: 600, fontSize: 13, letterSpacing: '-0.2px' }}>Tabzen</div>
+      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>Loading...</div>
+    </div>
+  );
+}
