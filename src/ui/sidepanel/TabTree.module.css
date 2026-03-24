@@ -1,0 +1,28 @@
+.tree {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 8px;
+}
+
+.groupSection {
+  /* no spacing between groups — borders handle separation */
+}
+
+.groupTabs {
+  /* container for tabs within a group */
+}
+
+.ungroupedSection {
+  border-top: 1px solid var(--border-light);
+  padding-top: 4px;
+  margin-top: 4px;
+}
+
+.ungroupedLabel {
+  padding: 4px 12px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}

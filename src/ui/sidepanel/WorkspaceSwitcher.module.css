@@ -1,0 +1,26 @@
+.switcher {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  padding: 0 12px;
+}
+
+.pill {
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-secondary);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: color 0.1s, border-color 0.1s;
+}
+
+.pill:hover {
+  color: var(--text-primary);
+}
+
+.pillActive {
+  color: var(--text-primary);
+  border-bottom-color: var(--text-primary);
+}
