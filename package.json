@@ -11,6 +11,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "fuse.js": "^7.1.0",
     "preact": "^10.29.0"
   },
   "devDependencies": {
