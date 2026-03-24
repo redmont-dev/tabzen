@@ -1,0 +1,27 @@
+{
+  "name": "@tabzen/extension",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "vite build && node scripts/post-build.mjs",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "fuse.js": "^7.1.0",
+    "preact": "^10.29.0"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.5",
+    "@types/chrome": "^0.1.38",
+    "fake-indexeddb": "^6.2.5",
+    "jsdom": "^29.0.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.2",
+    "vite-plugin-static-copy": "^4.0.0",
+    "vitest": "^4.1.1"
+  }
+}
