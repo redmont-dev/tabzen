@@ -10,10 +10,14 @@
 }
 
 .header h2 {
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 300;
-  letter-spacing: -0.8px;
+  letter-spacing: -0.5px;
   margin-bottom: 8px;
+}
+
+.header h2 strong {
+  font-weight: 700;
 }
 
 .header p {
