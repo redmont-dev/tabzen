@@ -7,7 +7,7 @@ export function Footer() {
       <Logo size={14} showText textSize={13} color="#999" />
       <div class={styles.links}>
         <a href="#">GitHub</a>
-        <a href="#">Privacy</a>
+        <a href="/privacy">Privacy</a>
         <a href="#">Chrome Web Store</a>
       </div>
     </footer>
