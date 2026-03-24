@@ -1,0 +1,26 @@
+.status {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 12px 16px 8px;
+}
+
+.title {
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: -0.2px;
+}
+
+.separator {
+  color: var(--border);
+}
+
+.stat {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.panelLink {
+  margin-left: auto;
+  font-size: 11px;
+}
