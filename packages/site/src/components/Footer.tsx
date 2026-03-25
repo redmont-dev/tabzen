@@ -14,19 +14,18 @@ function RedmontLogo() {
 export function Footer() {
   return (
     <footer id="footer" class={styles.footer}>
-      <div class={styles.main}>
-        <Logo size={14} showText textSize={13} color="#999" />
-        <div class={styles.links}>
-          <a href={GITHUB_URL} target="_blank" rel="noopener">GitHub</a>
-          <a href="/privacy">Privacy</a>
-          <a href={CHROME_STORE_URL} target="_blank" rel="noopener">Chrome Web Store</a>
-        </div>
-      </div>
-      <div class={styles.attribution}>
-        Built by{' '}
-        <a href="https://redmont.dev" target="_blank" rel="noopener" class={styles.attributionLink}>
-          <RedmontLogo /> Redmont
-        </a>
+      <Logo size={14} showText textSize={13} color="#999" />
+      <div class={styles.links}>
+        <a href={GITHUB_URL} target="_blank" rel="noopener">GitHub</a>
+        <a href="/privacy">Privacy</a>
+        <a href={CHROME_STORE_URL} target="_blank" rel="noopener">Chrome Web Store</a>
+        <span class={styles.separator}>·</span>
+        <span class={styles.attribution}>
+          Built by{' '}
+          <a href="https://redmont.dev" target="_blank" rel="noopener" class={styles.attributionLink}>
+            <RedmontLogo /> Redmont
+          </a>
+        </span>
       </div>
     </footer>
   );
