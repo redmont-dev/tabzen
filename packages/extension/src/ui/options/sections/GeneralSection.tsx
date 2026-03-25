@@ -1,4 +1,5 @@
 import type { Settings } from '@/data/types';
+import { setTheme } from '../theme';
 import styles from '../App.module.css';
 
 interface Props {
@@ -20,7 +21,11 @@ export function GeneralSection({ settings, onUpdate }: Props) {
           <select
             class={styles.select}
             value={settings.theme}
-            onChange={(e) => onUpdate({ theme: (e.target as HTMLSelectElement).value as Settings['theme'] })}
+            onChange={(e) => {
+              const theme = (e.target as HTMLSelectElement).value as Settings['theme'];
+              setTheme(theme);
+              onUpdate({ theme });
+            }}
           >
             <option value="system">System</option>
             <option value="light">Light</option>
