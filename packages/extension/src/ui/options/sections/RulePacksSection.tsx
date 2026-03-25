@@ -204,8 +204,18 @@ export function RulePacksSection() {
     }
   }, []);
 
+  const [applyStatus, setApplyStatus] = useState<string | null>(null);
+
   const handleApplyPack = useCallback(async (pack: RulePack) => {
-    await sendMessage({ action: 'importRulePack', pack });
+    setApplyStatus(null);
+    const res = await sendMessage<{ imported: number }>({ action: 'importRulePack', pack });
+    if (res.ok && res.data) {
+      const count = res.data.imported;
+      setApplyStatus(count > 0 ? `Added ${count} rule${count !== 1 ? 's' : ''} from "${pack.name}"` : `All rules from "${pack.name}" already exist`);
+    } else {
+      setApplyStatus(`Failed to apply: ${res.error || 'Unknown error'}`);
+    }
+    setTimeout(() => setApplyStatus(null), 4000);
   }, []);
 
   return (
@@ -220,6 +230,10 @@ export function RulePacksSection() {
             {showCreate ? 'Cancel' : 'Create custom pack'}
           </button>
         </div>
+
+        {applyStatus && (
+          <div style={{ padding: '8px 0', fontSize: 12, color: 'var(--text-secondary)' }}>{applyStatus}</div>
+        )}
 
         {showCreate && <CreatePackForm onClose={() => setShowCreate(false)} />}
 

@@ -88,6 +88,9 @@ export function App() {
       case 'collapseAll':
         await sendMessage({ action: 'collapseAll', windowId });
         break;
+      case 'saveSession':
+        await sendMessage({ action: 'saveSession', windowId });
+        break;
     }
 
     // Refresh counts after action
@@ -137,7 +140,7 @@ export function App() {
 
   const actions = [
     { label: 'Clean up', hint: '\u2318\u21E7U', onClick: () => runAction('cleanUp') },
-    { label: 'Save session', hint: '\u2318\u21E7S', disabled: true, onClick: () => {} },
+    { label: 'Save session', hint: '\u2318\u21E7S', onClick: () => runAction('saveSession') },
     { label: 'Remove duplicates', onClick: () => runAction('removeDuplicates') },
     { label: 'Collapse all groups', onClick: () => runAction('collapseAll') },
   ];
