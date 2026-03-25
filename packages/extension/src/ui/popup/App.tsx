@@ -1,10 +1,11 @@
 import { useState, useCallback, useEffect } from 'preact/hooks';
 import { sendMessage } from '@/hooks/use-message';
 import { useKeyboardNav } from '@/hooks/use-keyboard';
-import type { Settings, SortBy, SortOrder } from '@/data/types';
+import type { Settings, Session, SortBy, SortOrder } from '@/data/types';
 import { DEFAULT_SETTINGS } from '@/shared/constants';
 import { SearchBar } from '../components/SearchBar';
 import { SearchResults, type SearchResultItem } from '../components/SearchResults';
+import { ToastContainer, showToast } from '../components/Toast';
 import { StatusLine } from './StatusLine';
 import { ActionList } from './ActionList';
 import { SortSection } from './SortSection';
@@ -15,10 +16,30 @@ export function App() {
   const [groupCount, setGroupCount] = useState(0);
   const [windowId, setWindowId] = useState<number | null>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [showSessions, setShowSessions] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const showResults = query.length > 0 && results.length > 0;
+
+  const loadSessions = useCallback(async () => {
+    const res = await sendMessage<Session[]>({ action: 'getSessions' });
+    if (res.ok && res.data) {
+      setSessions(res.data.sort((a, b) => b.createdAt - a.createdAt).slice(0, 5));
+    }
+  }, []);
+
+  const refreshCounts = useCallback(async (wId: number) => {
+    const infoRes = await sendMessage<{ tabs: chrome.tabs.Tab[]; groups: chrome.tabGroups.TabGroup[] }>({
+      action: 'getWindowInfo',
+      windowId: wId,
+    });
+    if (infoRes.ok && infoRes.data) {
+      setTabCount(infoRes.data.tabs.length);
+      setGroupCount(infoRes.data.groups.length);
+    }
+  }, []);
 
   // Fetch initial state
   useEffect(() => {
@@ -27,21 +48,16 @@ export function App() {
       if (!win.id) return;
       setWindowId(win.id);
 
-      const infoRes = await sendMessage<{ tabs: chrome.tabs.Tab[]; groups: chrome.tabGroups.TabGroup[] }>({
-        action: 'getWindowInfo',
-        windowId: win.id,
-      });
-      if (infoRes.ok && infoRes.data) {
-        setTabCount(infoRes.data.tabs.length);
-        setGroupCount(infoRes.data.groups.length);
-      }
+      await refreshCounts(win.id);
 
       const settingsRes = await sendMessage<Settings>({ action: 'getSettings' });
       if (settingsRes.ok && settingsRes.data) {
         setSettings(settingsRes.data);
       }
+
+      loadSessions();
     })();
-  }, []);
+  }, [refreshCounts, loadSessions]);
 
   const handleSearch = useCallback(async (value: string) => {
     setQuery(value);
@@ -69,7 +85,7 @@ export function App() {
       if (wId) {
         await chrome.windows.update(wId, { focused: true });
       }
-      window.close(); // Close the popup after switching
+      window.close();
     } catch {
       // Tab may have been closed
     }
@@ -81,30 +97,33 @@ export function App() {
     switch (action) {
       case 'cleanUp':
         await sendMessage({ action: 'cleanUp', windowId });
+        showToast('Cleaned up');
         break;
-      case 'removeDuplicates':
-        await sendMessage({ action: 'removeDuplicates', windowId });
+      case 'removeDuplicates': {
+        const res = await sendMessage<number>({ action: 'removeDuplicates', windowId });
+        const count = res.ok && res.data ? res.data : 0;
+        showToast(count > 0 ? `Removed ${count} duplicate${count !== 1 ? 's' : ''}` : 'No duplicates found');
         break;
+      }
       case 'collapseAll':
         await sendMessage({ action: 'collapseAll', windowId });
+        showToast('Groups collapsed');
+        break;
+      case 'saveSession':
+        await sendMessage({ action: 'saveSession', windowId });
+        showToast('Session saved');
+        loadSessions();
         break;
     }
 
-    // Refresh counts after action
-    const infoRes = await sendMessage<{ tabs: chrome.tabs.Tab[]; groups: chrome.tabGroups.TabGroup[] }>({
-      action: 'getWindowInfo',
-      windowId,
-    });
-    if (infoRes.ok && infoRes.data) {
-      setTabCount(infoRes.data.tabs.length);
-      setGroupCount(infoRes.data.groups.length);
-    }
-  }, [windowId]);
+    await refreshCounts(windowId);
+  }, [windowId, refreshCounts, loadSessions]);
 
   const handleSort = useCallback(async (sortBy: SortBy, sortOrder: SortOrder) => {
     if (!windowId) return;
     await sendMessage({ action: 'sortTabs', windowId, sortBy, sortOrder });
     setSettings(prev => ({ ...prev, defaultSortBy: sortBy, defaultSortOrder: sortOrder }));
+    showToast(`Sorted by ${sortBy} (${sortOrder === 'asc' ? 'A→Z' : 'Z→A'})`);
   }, [windowId]);
 
   const handleOpenPanel = useCallback(async () => {
@@ -114,7 +133,6 @@ export function App() {
         await chrome.sidePanel.open({ tabId: tab.id });
       }
     } catch {
-      // Fallback: just enable the panel
       await chrome.sidePanel.setOptions({ enabled: true });
     }
     window.close();
@@ -137,7 +155,7 @@ export function App() {
 
   const actions = [
     { label: 'Clean up', hint: '\u2318\u21E7U', onClick: () => runAction('cleanUp') },
-    { label: 'Save session', hint: '\u2318\u21E7S', disabled: true, onClick: () => {} },
+    { label: 'Save session', hint: '\u2318\u21E7S', onClick: () => runAction('saveSession') },
     { label: 'Remove duplicates', onClick: () => runAction('removeDuplicates') },
     { label: 'Collapse all groups', onClick: () => runAction('collapseAll') },
   ];
@@ -172,6 +190,40 @@ export function App() {
 
       <ActionList actions={actions} />
 
+      <div class={styles.section}>
+        <button
+          class={styles.sectionToggle}
+          onClick={() => setShowSessions(!showSessions)}
+        >
+          <span>{showSessions ? '▼' : '▶'} Sessions</span>
+          <span class={styles.sectionCount}>{sessions.length}</span>
+        </button>
+        {showSessions && (
+          <div class={styles.sessionList}>
+            {sessions.length === 0 ? (
+              <div class={styles.sessionEmpty}>No saved sessions</div>
+            ) : (
+              sessions.map(s => (
+                <div key={s.id} class={styles.sessionItem}>
+                  <div class={styles.sessionInfo}>
+                    <span class={styles.sessionName}>{s.name}</span>
+                    <span class={styles.sessionMeta}>{s.tabs.length} tabs</span>
+                  </div>
+                  <button
+                    class={styles.sessionRestore}
+                    onClick={async () => {
+                      await sendMessage({ action: 'restoreSession', sessionId: s.id });
+                      showToast('Session restored');
+                    }}
+                    title="Restore"
+                  >↗</button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
+
       <SortSection
         sortBy={settings.defaultSortBy}
         sortOrder={settings.defaultSortOrder}
@@ -190,6 +242,8 @@ export function App() {
         </a>
         <span class={styles.workspace}>Default</span>
       </div>
+
+      <ToastContainer />
     </div>
   );
 }

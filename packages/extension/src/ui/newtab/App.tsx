@@ -5,10 +5,11 @@ import { SearchResults, type SearchResultItem } from '../components/SearchResult
 import { WorkspaceCards, type WorkspaceCardData } from './WorkspaceCards';
 import { SessionList } from './SessionList';
 import { DashboardStats } from './DashboardStats';
-import type { Session, Workspace, DashboardStats as DashboardStatsType } from '@/data/types';
+import type { Settings, Session, Workspace, DashboardStats as DashboardStatsType } from '@/data/types';
 import styles from './App.module.css';
 
 export function App() {
+  const [disabled, setDisabled] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -22,6 +23,13 @@ export function App() {
   // Load data on mount
   useEffect(() => {
     (async () => {
+      // Check if new tab page is enabled
+      const settingsRes = await sendMessage<Settings>({ action: 'getSettings' });
+      if (settingsRes.ok && settingsRes.data && !settingsRes.data.newTabPageEnabled) {
+        setDisabled(true);
+        return;
+      }
+
       // Load workspaces
       const wsResult = await sendMessage<Workspace[]>({ action: 'getWorkspaces' });
       if (wsResult.ok && wsResult.data) {
@@ -94,6 +102,17 @@ export function App() {
   const handleRestore = useCallback(async (sessionId: string) => {
     await sendMessage({ action: 'restoreSession', sessionId });
   }, []);
+
+  if (disabled) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', color: 'var(--text-tertiary)', fontSize: 13 }}>
+        <div style={{ marginBottom: 8 }}>Tabzen new tab page is disabled.</div>
+        <a style={{ color: 'var(--text-secondary)', cursor: 'pointer' }} onClick={() => chrome.runtime.openOptionsPage()}>
+          Re-enable in Settings
+        </a>
+      </div>
+    );
+  }
 
   return (
     <div class={styles.page}>
