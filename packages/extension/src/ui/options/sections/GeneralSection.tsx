@@ -1,5 +1,5 @@
 import type { Settings } from '@/data/types';
-import { setTheme } from '../theme';
+import { setTheme } from '../../theme';
 import styles from '../App.module.css';
 
 interface Props {
