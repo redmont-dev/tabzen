@@ -134,4 +134,64 @@ function escapeXml(str: string): string {
     .replace(/"/g, '&quot;');
 }
 
+// --- Auto Duplicate Detection ---
+// Track tabs opened via link clicks (within a 10-second window)
+const pendingLinkTabs = new Map<number, number>(); // tabId -> timestamp
+
+chrome.webNavigation.onCreatedNavigationTarget.addListener((details) => {
+  pendingLinkTabs.set(details.tabId, Date.now());
+  // Clean up after 10 seconds
+  setTimeout(() => pendingLinkTabs.delete(details.tabId), 10_000);
+});
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  // Only check tabs that were opened via link clicks and have finished loading
+  if (changeInfo.status !== 'complete') return;
+  if (!pendingLinkTabs.has(tabId)) return;
+  if (!tab.url || !tab.windowId) return;
+
+  // Remove from pending — we only check once
+  pendingLinkTabs.delete(tabId);
+
+  const settings = await SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+  if (!settings.dedupEnabled) return;
+
+  // Skip non-http URLs
+  if (!tab.url.startsWith('http://') && !tab.url.startsWith('https://')) return;
+
+  const { normalizeUrl } = await import('./utils/url-normalize');
+  const normalizedNew = normalizeUrl(tab.url, {
+    stripFragments: settings.stripFragments,
+    stripTrailingSlash: settings.stripTrailingSlash,
+    protocolAgnostic: settings.protocolAgnostic,
+  });
+
+  // Find an existing tab with the same normalized URL
+  const allTabs = await chrome.tabs.query({ windowId: tab.windowId });
+  for (const existing of allTabs) {
+    if (existing.id === tabId) continue; // Skip self
+    if (!existing.url || !existing.id) continue;
+
+    const normalizedExisting = normalizeUrl(existing.url, {
+      stripFragments: settings.stripFragments,
+      stripTrailingSlash: settings.stripTrailingSlash,
+      protocolAgnostic: settings.protocolAgnostic,
+    });
+
+    if (normalizedNew === normalizedExisting) {
+      // Duplicate found — close the new tab and switch to the existing one
+      try {
+        await chrome.tabs.remove(tabId);
+        await chrome.tabs.update(existing.id, { active: true });
+
+        // Increment analytics counter
+        bus.dispatch({ action: 'incrementAnalyticsCounter', counter: 'duplicatesBlocked' }).catch(() => {});
+      } catch {
+        // Tab may have already been closed
+      }
+      return;
+    }
+  }
+});
+
 console.log('Tabzen background service worker started');
