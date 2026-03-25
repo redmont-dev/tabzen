@@ -43,29 +43,16 @@ function compareTabs(
   return sortOrder === 'asc' ? cmp : -cmp;
 }
 
-async function sortTabs(
-  windowId: number,
+async function sortTabsInGroup(
+  tabs: chrome.tabs.Tab[],
   sortBy: SortBy,
   sortOrder: SortOrder,
-  groupId?: number,
+  groupColor: string | undefined,
+  priorityRules: PriorityRule[],
+  gId: number | undefined,
 ): Promise<void> {
-  const query: chrome.tabs.QueryInfo = groupId !== undefined
-    ? { windowId, groupId }
-    : { windowId };
-
-  const tabs = await chrome.tabs.query(query);
   const unpinned = tabs.filter(t => !t.pinned);
-
-  // Determine priority rules and group color
-  const workspace = await getActiveWorkspace();
-  const priorityRules = workspace?.priorityRules ?? [];
-  let groupColor: string | undefined;
-
-  if (groupId !== undefined && groupId !== -1 && priorityRules.length > 0) {
-    const groups = await chrome.tabGroups.query({ windowId });
-    const group = groups.find(g => g.id === groupId);
-    groupColor = group?.color;
-  }
+  if (unpinned.length === 0) return;
 
   // Separate priority and normal tabs
   const priority: chrome.tabs.Tab[] = [];
@@ -79,21 +66,65 @@ async function sortTabs(
     }
   }
 
-  // Sort each group independently
   priority.sort((a, b) => compareTabs(a, b, sortBy, sortOrder));
   normal.sort((a, b) => compareTabs(a, b, sortBy, sortOrder));
 
   const sorted = [...priority, ...normal];
 
-  const startIndex = unpinned.length > 0
-    ? Math.min(...unpinned.map(t => t.index))
-    : 0;
+  const startIndex = Math.min(...unpinned.map(t => t.index));
 
   for (let i = 0; i < sorted.length; i++) {
     const tab = sorted[i];
     if (tab.id != null) {
       await chrome.tabs.move(tab.id, { index: startIndex + i });
     }
+  }
+
+  // Re-group tabs after move (chrome.tabs.move removes tabs from groups)
+  if (gId !== undefined && gId !== -1) {
+    const tabIds = sorted.map(t => t.id).filter(Boolean) as number[];
+    if (tabIds.length > 0) {
+      await chrome.tabs.group({ tabIds, groupId: gId });
+    }
+  }
+}
+
+async function sortTabs(
+  windowId: number,
+  sortBy: SortBy,
+  sortOrder: SortOrder,
+  groupId?: number,
+): Promise<void> {
+  const workspace = await getActiveWorkspace();
+  const priorityRules = workspace?.priorityRules ?? [];
+
+  if (groupId !== undefined) {
+    // Sort within a specific group
+    const tabs = await chrome.tabs.query({ windowId, groupId });
+    let groupColor: string | undefined;
+
+    if (groupId !== -1 && priorityRules.length > 0) {
+      const groups = await chrome.tabGroups.query({ windowId });
+      const group = groups.find(g => g.id === groupId);
+      groupColor = group?.color;
+    }
+
+    await sortTabsInGroup(tabs, sortBy, sortOrder, groupColor, priorityRules, groupId);
+  } else {
+    // Sort all tabs in window, group by group
+    const groups = await chrome.tabGroups.query({ windowId });
+
+    // Sort each group's tabs independently
+    for (const group of groups) {
+      const groupTabs = await chrome.tabs.query({ windowId, groupId: group.id });
+      const groupColor = priorityRules.length > 0 ? group.color : undefined;
+      await sortTabsInGroup(groupTabs, sortBy, sortOrder, groupColor, priorityRules, group.id);
+    }
+
+    // Sort ungrouped tabs
+    const allTabs = await chrome.tabs.query({ windowId });
+    const ungrouped = allTabs.filter(t => t.groupId === -1);
+    await sortTabsInGroup(ungrouped, sortBy, sortOrder, undefined, priorityRules, undefined);
   }
 }
 
@@ -156,11 +187,16 @@ async function sortGroups(windowId: number, mode: GroupSortMode): Promise<void> 
 
   for (const group of sorted) {
     const groupTabs = await chrome.tabs.query({ windowId, groupId: group.id });
+    const tabIds = groupTabs.map(t => t.id).filter(Boolean) as number[];
     for (const tab of groupTabs) {
       if (tab.id != null) {
         await chrome.tabs.move(tab.id, { index: targetIndex });
         targetIndex++;
       }
+    }
+    // Re-group tabs after move (chrome.tabs.move removes tabs from groups)
+    if (tabIds.length > 0) {
+      await chrome.tabs.group({ tabIds, groupId: group.id });
     }
   }
 }

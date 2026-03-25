@@ -13,13 +13,95 @@
   padding: 0 16px 8px;
 }
 
+.section {
+  border-bottom: 1px solid var(--border-light);
+}
+
+.sectionHeader {
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: 8px 16px 4px;
+  margin-bottom: 0;
+}
+
+.sessionsToggle {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+  gap: 8px;
+  cursor: pointer;
+  background: none;
+  border: none;
+}
+
+.sessionsToggle .sectionHeader {
+  padding: 8px 0 8px 16px;
+}
+
+.sessionsBadge {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  margin-left: auto;
+  padding-right: 16px;
+}
+
+.sessionsList {
+  padding: 0 0 4px;
+}
+
+.sessionsEmpty {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding: 4px 16px 8px;
+}
+
+.sessionItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 5px 16px;
+  font-size: 12px;
+  text-align: left;
+  color: var(--text-primary);
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.sessionItem:hover {
+  background: var(--bg-hover);
+}
+
+.sessionName {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sessionMeta {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+.sessionRestore {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+
 .footer {
   display: flex;
   align-items: center;
   gap: 12px;
   padding: 8px 16px;
   font-size: 11px;
-  border-top: 1px solid var(--border-light);
 }
 
 .footerLink {

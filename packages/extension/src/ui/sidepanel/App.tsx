@@ -8,6 +8,7 @@ import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { QuickActions } from './QuickActions';
 import { TabTree } from './TabTree';
 import { TabzenLogo } from '../components/TabzenLogo';
+import { ToastContainer, showToast } from '../components/Toast';
 import { SessionList } from './SessionList';
 import styles from './App.module.css';
 
@@ -62,16 +63,19 @@ export function App() {
   const handleCleanUp = useCallback(async () => {
     if (!state) return;
     await sendMessage({ action: 'cleanUp', windowId: state.windowId });
+    showToast('Cleaned up');
   }, [state]);
 
   const handleSave = useCallback(async () => {
     if (!state) return;
     await sendMessage({ action: 'saveSession', windowId: state.windowId });
+    showToast('Session saved');
   }, [state]);
 
   const handleCollapseAll = useCallback(async () => {
     if (!state) return;
     await sendMessage({ action: 'collapseAll', windowId: state.windowId });
+    showToast('Groups collapsed');
   }, [state]);
 
   useKeyboardNav({
@@ -138,6 +142,8 @@ export function App() {
       )}
 
       <SessionList />
+
+      <ToastContainer />
     </div>
   );
 }

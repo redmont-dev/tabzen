@@ -5,7 +5,7 @@ import { SearchResults, type SearchResultItem } from '../components/SearchResult
 import { WorkspaceCards, type WorkspaceCardData } from './WorkspaceCards';
 import { SessionList } from './SessionList';
 import { DashboardStats } from './DashboardStats';
-import type { Session, Workspace, DashboardStats as DashboardStatsType } from '@/data/types';
+import type { Session, Settings, Workspace, DashboardStats as DashboardStatsType } from '@/data/types';
 import styles from './App.module.css';
 
 export function App() {
@@ -16,12 +16,19 @@ export function App() {
   const [activeWorkspaceId, setActiveWorkspaceId] = useState('default');
   const [sessions, setSessions] = useState<Session[]>([]);
   const [stats, setStats] = useState<DashboardStatsType | null>(null);
+  const [disabled, setDisabled] = useState(false);
 
   const showResults = query.length > 0 && results.length > 0;
 
   // Load data on mount
   useEffect(() => {
     (async () => {
+      // Check if new tab page is enabled
+      const settingsRes = await sendMessage<Settings>({ action: 'getSettings' });
+      if (settingsRes.ok && settingsRes.data && !settingsRes.data.newTabPageEnabled) {
+        setDisabled(true);
+        return;
+      }
       // Load workspaces
       const wsResult = await sendMessage<Workspace[]>({ action: 'getWorkspaces' });
       if (wsResult.ok && wsResult.data) {
@@ -94,6 +101,14 @@ export function App() {
   const handleRestore = useCallback(async (sessionId: string) => {
     await sendMessage({ action: 'restoreSession', sessionId });
   }, []);
+
+  if (disabled) {
+    return (
+      <div class={styles.page}>
+        <div class={styles.empty}>New tab page is disabled. Enable it in Tabzen settings.</div>
+      </div>
+    );
+  }
 
   return (
     <div class={styles.page}>

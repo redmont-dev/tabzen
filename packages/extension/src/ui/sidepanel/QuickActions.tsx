@@ -11,7 +11,7 @@ export function QuickActions({ onCleanUp, onSave, onCollapseAll }: QuickActionsP
   return (
     <div class={styles.row}>
       <ActionButton label="Clean up" onClick={onCleanUp} />
-      <ActionButton label="Save" onClick={onSave} disabled />
+      <ActionButton label="Save" onClick={onSave} />
       <ActionButton label="Collapse all" onClick={onCollapseAll} />
     </div>
   );
