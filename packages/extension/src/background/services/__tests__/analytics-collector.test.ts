@@ -3,7 +3,6 @@ import 'fake-indexeddb/auto';
 import { MessageBus } from '../../message-bus';
 import {
   registerAnalyticsCollector,
-  incrementCounter,
   resetCounters,
 } from '../analytics-collector';
 import type { AnalyticsSnapshot, DashboardStats } from '@/data/types';
@@ -49,8 +48,8 @@ describe('AnalyticsCollector', () => {
       vi.mocked(chrome.tabs.query).mockResolvedValue([]);
       vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
 
-      incrementCounter('duplicatesBlocked', 5);
-      incrementCounter('sessionsUsed', 2);
+      await bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'duplicatesBlocked', amount: 5 });
+      await bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'sessionsUsed', amount: 2 });
 
       const result = await bus.dispatch({ action: 'takeAnalyticsSnapshot' });
       const snapshot = result.data as AnalyticsSnapshot;
@@ -116,10 +115,10 @@ describe('AnalyticsCollector', () => {
       ] as chrome.tabs.Tab[]);
       vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
 
-      incrementCounter('duplicatesBlocked', 3);
+      await bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'duplicatesBlocked', amount: 3 });
       await bus.dispatch({ action: 'takeAnalyticsSnapshot' });
 
-      incrementCounter('sessionsUsed', 1);
+      await bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'sessionsUsed', amount: 1 });
       vi.mocked(chrome.tabs.query).mockResolvedValue([
         { id: 1, url: 'https://example.com', windowId: 1 },
         { id: 2, url: 'https://example.com/other', windowId: 1 },

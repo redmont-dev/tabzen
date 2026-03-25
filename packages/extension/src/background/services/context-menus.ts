@@ -2,7 +2,6 @@ import type { MessageBus } from '../message-bus';
 import { extractDomain } from '../utils/rule-matcher';
 
 const MENU_IDS = {
-  ROOT: 'tabzen-root',
   MOVE_TO_GROUP: 'tabzen-move-to-group',
   MOVE_TO_NEW_GROUP: 'tabzen-move-new-group',
   CREATE_RULE: 'tabzen-create-rule',
@@ -48,34 +47,6 @@ function createMenuItems(): void {
     title: 'Close duplicates in window',
     contexts: ['page'],
   });
-}
-
-async function updateGroupSubmenu(): Promise<void> {
-  // Remove existing group items (except the "New group" item)
-  // Then re-add items for each current group
-  const windows = await chrome.windows.getAll();
-  const allGroups = new Map<string, { id: number; title: string; color: string }>();
-
-  for (const win of windows) {
-    if (!win.id) continue;
-    const groups = await chrome.tabGroups.query({ windowId: win.id });
-    for (const group of groups) {
-      const key = `${group.title}::${group.color}`;
-      if (!allGroups.has(key)) {
-        allGroups.set(key, { id: group.id, title: group.title ?? 'Untitled', color: group.color });
-      }
-    }
-  }
-
-  // Create submenu items for each group
-  for (const [key, group] of allGroups) {
-    chrome.contextMenus.create({
-      id: `tabzen-group-${group.id}`,
-      title: group.title || 'Untitled',
-      parentId: MENU_IDS.MOVE_TO_GROUP,
-      contexts: ['page'],
-    });
-  }
 }
 
 async function handleMenuClick(
@@ -155,7 +126,7 @@ async function handleMenuClick(
   }
 }
 
-export { MENU_IDS, createMenuItems, updateGroupSubmenu, handleMenuClick };
+export { MENU_IDS, createMenuItems, handleMenuClick };
 
 export function registerContextMenus(bus: MessageBus): void {
   // Set up menus on install and startup
@@ -172,7 +143,7 @@ export function registerContextMenus(bus: MessageBus): void {
   // Handle menu clicks
   chrome.contextMenus.onClicked.addListener(
     (info: chrome.contextMenus.OnClickData, tab?: chrome.tabs.Tab) => {
-      handleMenuClick(bus, info, tab);
+      handleMenuClick(bus, info, tab).catch(err => console.error('Menu action failed:', err));
     },
   );
 }

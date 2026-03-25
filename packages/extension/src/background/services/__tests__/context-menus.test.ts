@@ -6,6 +6,7 @@ import {
   handleMenuClick,
   registerContextMenus,
 } from '../context-menus';
+// updateGroupSubmenu was removed — dead code
 import { registerTabManager } from '../tab-manager';
 import { registerSearchIndex } from '../search-index';
 

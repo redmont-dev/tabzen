@@ -37,8 +37,10 @@ export function matchRule(url: string, rule: GroupingRule): boolean {
     }
 
     case 'regex': {
+      if (rule.pattern.length > 200) return false;
       try {
-        return new RegExp(rule.pattern).test(url);
+        const re = new RegExp(rule.pattern);
+        return re.test(url);
       } catch {
         return false;
       }

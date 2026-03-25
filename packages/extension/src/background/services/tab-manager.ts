@@ -1,6 +1,6 @@
 import type { MessageBus } from '../message-bus';
-import type { SortBy, SortOrder, Settings, Workspace, PriorityRule, GroupSortMode } from '@/data/types';
-import { SyncStorage } from '@/data/storage';
+import type { SortBy, SortOrder, Settings, Workspace, PriorityRule, GroupSortMode, TabGroupColor } from '@/data/types';
+import { LocalStorage, SyncStorage } from '@/data/storage';
 import { DEFAULT_SETTINGS, STORAGE_KEYS, TAB_GROUP_COLORS } from '@/shared/constants';
 import { normalizeUrl } from '../utils/url-normalize';
 
@@ -10,7 +10,7 @@ async function getSettings(): Promise<Settings> {
 
 async function getActiveWorkspace(): Promise<Workspace | null> {
   const settings = await getSettings();
-  const workspaces = await SyncStorage.get<Workspace[]>(STORAGE_KEYS.WORKSPACES, []);
+  const workspaces = await LocalStorage.get<Workspace[]>(STORAGE_KEYS.WORKSPACES, []);
   return workspaces.find(w => w.id === settings.activeWorkspaceId) ?? null;
 }
 
@@ -23,7 +23,7 @@ function isPriorityTab(
   for (const rule of priorityRules) {
     if (tab.url.startsWith(rule.urlPrefix)) {
       // If colors array is empty, matches all groups; otherwise group must match
-      if (rule.colors.length === 0 || (groupColor && rule.colors.includes(groupColor as any))) {
+      if (rule.colors.length === 0 || (groupColor && rule.colors.includes(groupColor as TabGroupColor))) {
         return true;
       }
     }
@@ -142,10 +142,10 @@ async function sortGroups(windowId: number, mode: GroupSortMode): Promise<void> 
   } else {
     // Sort by color using user's custom color order
     const settings = await getSettings();
-    const colorOrder = settings.colorOrder ?? TAB_GROUP_COLORS;
+    const colorOrder: TabGroupColor[] = settings.colorOrder ?? TAB_GROUP_COLORS;
     sorted = [...groups].sort((a, b) => {
-      const aIdx = colorOrder.indexOf(a.color as any);
-      const bIdx = colorOrder.indexOf(b.color as any);
+      const aIdx = colorOrder.indexOf(a.color as TabGroupColor);
+      const bIdx = colorOrder.indexOf(b.color as TabGroupColor);
       return aIdx - bIdx;
     });
   }

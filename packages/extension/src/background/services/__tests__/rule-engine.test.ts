@@ -10,16 +10,17 @@ describe('RuleEngine', () => {
     bus = new MessageBus();
     registerRuleEngine(bus);
 
-    const { storageSyncData } = await import('../../../../tests/setup');
+    const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
     // Clear storage between tests
     for (const k of Object.keys(storageSyncData)) delete storageSyncData[k];
+    for (const k of Object.keys(storageLocalData)) delete storageLocalData[k];
   });
 
   describe('applyRules', () => {
     it('groups ungrouped tabs that match a prefix rule', async () => {
-      const { storageSyncData } = await import('../../../../tests/setup');
+      const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
       storageSyncData['settings'] = { activeWorkspaceId: 'default' };
-      storageSyncData['workspaces'] = [{
+      storageLocalData['workspaces'] = [{
         id: 'default',
         name: 'Default',
         icon: '',
@@ -56,9 +57,9 @@ describe('RuleEngine', () => {
     });
 
     it('adds tab to existing group with same name and color', async () => {
-      const { storageSyncData } = await import('../../../../tests/setup');
+      const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
       storageSyncData['settings'] = { activeWorkspaceId: 'default' };
-      storageSyncData['workspaces'] = [{
+      storageLocalData['workspaces'] = [{
         id: 'default',
         name: 'Default',
         icon: '',
@@ -91,9 +92,9 @@ describe('RuleEngine', () => {
     });
 
     it('does not regroup tabs already in the correct group', async () => {
-      const { storageSyncData } = await import('../../../../tests/setup');
+      const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
       storageSyncData['settings'] = { activeWorkspaceId: 'default' };
-      storageSyncData['workspaces'] = [{
+      storageLocalData['workspaces'] = [{
         id: 'default',
         name: 'Default',
         icon: '',
@@ -128,9 +129,9 @@ describe('RuleEngine', () => {
     });
 
     it('auto-groups a tab when its URL changes to match a rule', async () => {
-      const { storageSyncData } = await import('../../../../tests/setup');
+      const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
       storageSyncData['settings'] = { activeWorkspaceId: 'default' };
-      storageSyncData['workspaces'] = [{
+      storageLocalData['workspaces'] = [{
         id: 'default',
         name: 'Default',
         icon: '',
@@ -177,9 +178,9 @@ describe('RuleEngine', () => {
     });
 
     it('does not auto-group when URL change does not match any rule', async () => {
-      const { storageSyncData } = await import('../../../../tests/setup');
+      const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
       storageSyncData['settings'] = { activeWorkspaceId: 'default' };
-      storageSyncData['workspaces'] = [{
+      storageLocalData['workspaces'] = [{
         id: 'default',
         name: 'Default',
         icon: '',
@@ -216,9 +217,9 @@ describe('RuleEngine', () => {
     });
 
     it('does not auto-group pinned tabs', async () => {
-      const { storageSyncData } = await import('../../../../tests/setup');
+      const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
       storageSyncData['settings'] = { activeWorkspaceId: 'default' };
-      storageSyncData['workspaces'] = [{
+      storageLocalData['workspaces'] = [{
         id: 'default',
         name: 'Default',
         icon: '',
@@ -255,9 +256,9 @@ describe('RuleEngine', () => {
 
   describe('getSuggestedRules', () => {
     it('suggests a domain rule when 3+ ungrouped tabs share a domain', async () => {
-      const { storageSyncData } = await import('../../../../tests/setup');
+      const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
       storageSyncData['settings'] = { activeWorkspaceId: 'default' };
-      storageSyncData['workspaces'] = [{
+      storageLocalData['workspaces'] = [{
         id: 'default',
         name: 'Default',
         icon: '',
@@ -288,9 +289,9 @@ describe('RuleEngine', () => {
     });
 
     it('does not suggest rules for domains already covered by a rule', async () => {
-      const { storageSyncData } = await import('../../../../tests/setup');
+      const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
       storageSyncData['settings'] = { activeWorkspaceId: 'default' };
-      storageSyncData['workspaces'] = [{
+      storageLocalData['workspaces'] = [{
         id: 'default',
         name: 'Default',
         icon: '',
@@ -316,9 +317,9 @@ describe('RuleEngine', () => {
     });
 
     it('does not suggest for grouped tabs', async () => {
-      const { storageSyncData } = await import('../../../../tests/setup');
+      const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
       storageSyncData['settings'] = { activeWorkspaceId: 'default' };
-      storageSyncData['workspaces'] = [{
+      storageLocalData['workspaces'] = [{
         id: 'default',
         name: 'Default',
         icon: '',
@@ -342,9 +343,9 @@ describe('RuleEngine', () => {
     });
 
     it('returns suggestions sorted by tab count descending', async () => {
-      const { storageSyncData } = await import('../../../../tests/setup');
+      const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
       storageSyncData['settings'] = { activeWorkspaceId: 'default' };
-      storageSyncData['workspaces'] = [{
+      storageLocalData['workspaces'] = [{
         id: 'default',
         name: 'Default',
         icon: '',

@@ -94,7 +94,7 @@ chrome.omnibox.onInputEntered.addListener(async (text, disposition) => {
   } else {
     // User pressed Enter on raw text — search and switch to best match
     const response = await bus.dispatch({ action: 'searchTabs', query: text, scope: 'tabs' });
-    if (response.ok && response.data && (response.data as unknown[]).length > 0) {
+    if (response.ok && response.data && Array.isArray(response.data) && response.data.length > 0) {
       const best = (response.data as Array<{ tabId: number; windowId: number }>)[0];
       try {
         await chrome.tabs.update(best.tabId, { active: true });
@@ -136,11 +136,21 @@ function escapeXml(str: string): string {
 
 // --- Auto Duplicate Detection ---
 // Track tabs opened via link clicks (within a 10-second window)
+const MAX_PENDING_LINK_TABS = 100;
 const pendingLinkTabs = new Map<number, number>(); // tabId -> timestamp
 
 chrome.webNavigation.onCreatedNavigationTarget.addListener((details) => {
+  // Cap the map size to prevent unbounded growth
+  if (pendingLinkTabs.size >= MAX_PENDING_LINK_TABS) {
+    // Remove oldest entries
+    const entries = [...pendingLinkTabs.entries()].sort((a, b) => a[1] - b[1]);
+    const toRemove = entries.slice(0, Math.floor(MAX_PENDING_LINK_TABS / 2));
+    for (const [tabId] of toRemove) {
+      pendingLinkTabs.delete(tabId);
+    }
+  }
   pendingLinkTabs.set(details.tabId, Date.now());
-  // Clean up after 10 seconds
+  // Safety cleanup for tabs that never finish loading
   setTimeout(() => pendingLinkTabs.delete(details.tabId), 10_000);
 });
 
@@ -185,7 +195,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         await chrome.tabs.update(existing.id, { active: true });
 
         // Increment analytics counter
-        bus.dispatch({ action: 'incrementAnalyticsCounter', counter: 'duplicatesBlocked' }).catch(() => {});
+        bus.dispatch({ action: 'incrementAnalyticsCounter', counter: 'duplicatesBlocked' }).catch(err => console.warn('Analytics increment failed:', err));
       } catch {
         // Tab may have already been closed
       }
