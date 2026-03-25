@@ -5,14 +5,14 @@ frontend:
       commands:
         - corepack enable
         - corepack prepare pnpm@latest --activate
-        - pnpm install
+        - cd ../../ && pnpm install
     build:
       commands:
-        - pnpm build
+        - cd ../../ && pnpm build:site
   artifacts:
     baseDirectory: dist
     files:
       - '**/*'
   cache:
     paths:
-      - node_modules/**/*
+      - ../../node_modules/**/*
