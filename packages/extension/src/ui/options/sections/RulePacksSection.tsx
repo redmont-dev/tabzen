@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
-import type { RulePack } from '@/data/types';
+import type { RulePack, GroupingRule } from '@/data/types';
 import { sendMessage } from '@/hooks/use-message';
 import styles from '../App.module.css';
 
@@ -39,9 +39,128 @@ function PackRuleList({ pack }: { pack: RulePack }) {
   );
 }
 
+function CreatePackForm({ onClose }: { onClose: () => void }) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [allRules, setAllRules] = useState<GroupingRule[]>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const res = await sendMessage<RulePack>({ action: 'exportRules', name: '' });
+      if (res.ok && res.data) {
+        setAllRules(res.data.rules);
+        setSelected(new Set(res.data.rules.map(r => r.id)));
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  const toggle = (id: string) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAll = () => setSelected(new Set(allRules.map(r => r.id)));
+  const selectNone = () => setSelected(new Set());
+
+  const handleExport = () => {
+    if (!name.trim()) return;
+    const selectedRules = allRules.filter(r => selected.has(r.id));
+    const pack: RulePack = {
+      id: `custom-${Date.now()}`,
+      name: name.trim(),
+      description: description.trim(),
+      author: 'Custom',
+      version: '1.0.0',
+      rules: selectedRules,
+      priorityRules: [],
+    };
+    const blob = new Blob([JSON.stringify(pack, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name.trim().toLowerCase().replace(/\s+/g, '-')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    onClose();
+  };
+
+  if (loading) return <div class={styles.fieldDescription}>Loading rules...</div>;
+
+  if (allRules.length === 0) {
+    return (
+      <div style={{ padding: '12px 0' }}>
+        <div class={styles.fieldDescription}>No rules to export. Create some grouping rules first.</div>
+        <button class={styles.button} onClick={onClose} style={{ marginTop: 8 }}>Cancel</button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '12px 0', borderTop: '1px solid var(--border-light)' }}>
+      <div style={{ marginBottom: 12 }}>
+        <div class={styles.fieldLabel}>Pack name</div>
+        <input
+          class={styles.input}
+          value={name}
+          onInput={(e) => setName((e.target as HTMLInputElement).value)}
+          placeholder="My Rule Pack"
+          style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 3 }}
+        />
+      </div>
+      <div style={{ marginBottom: 12 }}>
+        <div class={styles.fieldLabel}>Description (optional)</div>
+        <input
+          class={styles.input}
+          value={description}
+          onInput={(e) => setDescription((e.target as HTMLInputElement).value)}
+          placeholder="Rules for..."
+          style={{ width: '100%', padding: '6px 8px', border: '1px solid var(--border)', borderRadius: 3 }}
+        />
+      </div>
+      <div style={{ marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div class={styles.fieldLabel}>Select rules ({selected.size} of {allRules.length})</div>
+        <div style={{ display: 'flex', gap: 8, fontSize: 11 }}>
+          <span onClick={selectAll} style={{ cursor: 'pointer', color: 'var(--text-secondary)', textDecoration: 'underline' }}>All</span>
+          <span onClick={selectNone} style={{ cursor: 'pointer', color: 'var(--text-secondary)', textDecoration: 'underline' }}>None</span>
+        </div>
+      </div>
+      <div style={{ maxHeight: 200, overflowY: 'auto', border: '1px solid var(--border-light)', borderRadius: 3 }}>
+        {allRules.map(rule => (
+          <label key={rule.id} style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px',
+            borderBottom: '1px solid var(--border-light)', cursor: 'pointer', fontSize: 12,
+          }}>
+            <input type="checkbox" checked={selected.has(rule.id)} onChange={() => toggle(rule.id)} />
+            <span style={{
+              width: 7, height: 7, borderRadius: '50%',
+              background: COLOR_MAP[rule.color] || '#999', flexShrink: 0,
+            }} />
+            <span style={{ color: 'var(--text-secondary)', marginRight: 4 }}>{rule.type}</span>
+            <span style={{ fontFamily: 'monospace', fontSize: 11 }}>{rule.pattern}</span>
+            <span style={{ marginLeft: 'auto', color: 'var(--text-secondary)' }}>{rule.groupName}</span>
+          </label>
+        ))}
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+        <button class={styles.button} onClick={handleExport} disabled={!name.trim() || selected.size === 0}>
+          Export {selected.size} rule{selected.size !== 1 ? 's' : ''}
+        </button>
+        <button class={styles.button} onClick={onClose}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
 export function RulePacksSection() {
   const [packs, setPacks] = useState<RulePack[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -72,7 +191,7 @@ export function RulePacksSection() {
     input.click();
   }, []);
 
-  const handleExport = useCallback(async () => {
+  const handleExportAll = useCallback(async () => {
     const res = await sendMessage<RulePack>({ action: 'exportRules', name: 'My Rules' });
     if (res.ok && res.data) {
       const blob = new Blob([JSON.stringify(res.data, null, 2)], { type: 'application/json' });
@@ -96,8 +215,13 @@ export function RulePacksSection() {
       <div class={styles.sectionBlock}>
         <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
           <button class={styles.button} onClick={handleImport}>Import pack</button>
-          <button class={styles.button} onClick={handleExport}>Export current rules</button>
+          <button class={styles.button} onClick={handleExportAll}>Export all rules</button>
+          <button class={styles.button} onClick={() => setShowCreate(!showCreate)}>
+            {showCreate ? 'Cancel' : 'Create custom pack'}
+          </button>
         </div>
+
+        {showCreate && <CreatePackForm onClose={() => setShowCreate(false)} />}
 
         {packs.length > 0 ? (
           packs.map(pack => (
