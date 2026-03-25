@@ -19,21 +19,26 @@ function validateRulePack(pack: unknown): pack is RulePack {
   );
 }
 
-async function getActiveWorkspace(): Promise<{ workspace: Workspace; index: number; workspaces: Workspace[] } | null> {
+async function getActiveWorkspace(): Promise<{ workspace: Workspace; index: number; workspaces: Workspace[] }> {
   const { SyncStorage } = await import('@/data/storage');
-  const { DEFAULT_SETTINGS } = await import('@/shared/constants');
+  const { DEFAULT_SETTINGS, createDefaultWorkspace } = await import('@/shared/constants');
   const settings = await SyncStorage.get(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
-  const workspaces = await LocalStorage.get<Workspace[]>(STORAGE_KEYS.WORKSPACES, []);
-  const index = workspaces.findIndex(w => w.id === settings.activeWorkspaceId);
-  if (index === -1) return null;
+  let workspaces = await LocalStorage.get<Workspace[]>(STORAGE_KEYS.WORKSPACES, []);
+
+  // Auto-create default workspace if none exist
+  if (workspaces.length === 0) {
+    const defaultWs = createDefaultWorkspace();
+    workspaces = [defaultWs];
+    await LocalStorage.set(STORAGE_KEYS.WORKSPACES, workspaces);
+  }
+
+  let index = workspaces.findIndex(w => w.id === settings.activeWorkspaceId);
+  if (index === -1) index = 0; // Fallback to first workspace
   return { workspace: workspaces[index], index, workspaces };
 }
 
 async function importRulePack(pack: RulePack): Promise<number> {
-  const active = await getActiveWorkspace();
-  if (!active) throw new Error('No active workspace found');
-
-  const { workspace, index, workspaces } = active;
+  const { workspace, index, workspaces } = await getActiveWorkspace();
 
   // Assign new IDs to imported rules to avoid collisions
   const existingPatterns = new Set(workspace.rules.map(r => `${r.type}::${r.pattern}`));
@@ -61,10 +66,7 @@ async function importRulePack(pack: RulePack): Promise<number> {
 }
 
 async function exportRules(name: string, description?: string): Promise<RulePack> {
-  const active = await getActiveWorkspace();
-  if (!active) throw new Error('No active workspace found');
-
-  const { workspace } = active;
+  const { workspace } = await getActiveWorkspace();
 
   return {
     id: `pack-export-${Date.now()}`,
