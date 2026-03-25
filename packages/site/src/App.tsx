@@ -22,7 +22,7 @@ export function App() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  if (path === '/privacy') {
+  if (path === '/privacy' || path === '/privacy/') {
     return <Privacy />;
   }
 
