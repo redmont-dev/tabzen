@@ -194,4 +194,24 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   }
 });
 
+// --- Adaptive icon: swap between light and dark icons based on system theme ---
+function updateIcon(isDark: boolean) {
+  const suffix = isDark ? '-dark' : '';
+  chrome.action.setIcon({
+    path: {
+      16: `icons/icon-16${suffix}.png`,
+      32: `icons/icon-32${suffix}.png`,
+      48: `icons/icon-48${suffix}.png`,
+      128: `icons/icon-128${suffix}.png`,
+    },
+  });
+}
+
+// MV3 service workers support matchMedia
+if (typeof matchMedia !== 'undefined') {
+  const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+  updateIcon(darkQuery.matches);
+  darkQuery.addEventListener('change', (e) => updateIcon(e.matches));
+}
+
 console.log('Tabzen background service worker started');
