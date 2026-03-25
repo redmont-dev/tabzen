@@ -1,11 +1,14 @@
 .footer {
-  padding: 40px;
+  padding: 40px 40px 32px;
   border-top: 1px solid var(--color-border-light);
+  font-size: 12px;
+  color: var(--color-text-tertiary);
+}
+
+.main {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 12px;
-  color: var(--color-text-tertiary);
 }
 
 .links {
@@ -17,9 +20,33 @@
   color: var(--color-text-secondary);
 }
 
+.attribution {
+  text-align: center;
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--color-border-light);
+  font-size: 11px;
+  color: #bbb;
+}
+
+.attributionLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #bbb;
+  text-decoration: none;
+}
+
+.attributionLink:hover {
+  color: #999;
+}
+
 @media (max-width: 600px) {
   .footer {
     padding: 24px 20px;
+  }
+
+  .main {
     flex-direction: column;
     gap: 16px;
   }
