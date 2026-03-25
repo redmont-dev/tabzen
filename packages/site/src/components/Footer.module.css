@@ -1,31 +1,27 @@
 .footer {
+  position: relative;
   padding: 40px;
   border-top: 1px solid var(--color-border-light);
   display: flex;
-  flex-direction: column;
+  justify-content: space-between;
   align-items: center;
-  gap: 12px;
   font-size: 12px;
   color: var(--color-text-tertiary);
 }
 
+.center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
 .links {
   display: flex;
-  align-items: center;
   gap: 20px;
 }
 
 .links a:hover {
   color: var(--color-text-secondary);
-}
-
-.separator {
-  color: #ddd;
-}
-
-.attribution {
-  font-size: 11px;
-  color: #bbb;
 }
 
 .attributionLink {
@@ -34,6 +30,7 @@
   gap: 4px;
   color: #bbb;
   text-decoration: none;
+  font-size: 11px;
 }
 
 .attributionLink:hover {
@@ -43,10 +40,13 @@
 @media (max-width: 600px) {
   .footer {
     padding: 24px 20px;
+    flex-direction: column;
+    gap: 16px;
+    position: relative;
   }
 
-  .links {
-    flex-wrap: wrap;
-    justify-content: center;
+  .center {
+    position: static;
+    transform: none;
   }
 }
