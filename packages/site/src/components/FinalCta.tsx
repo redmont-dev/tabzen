@@ -1,3 +1,4 @@
+import { CHROME_STORE_URL } from '../config';
 import styles from './FinalCta.module.css';
 
 export function FinalCta() {
@@ -9,7 +10,7 @@ export function FinalCta() {
         <strong>Let Tabzen do it.</strong>
       </h2>
       <p>Free. Open source. No account required. Your data stays on your device.</p>
-      <a href="#" class={styles.cta}>
+      <a href={CHROME_STORE_URL} target="_blank" rel="noopener" class={styles.cta}>
         Add to Chrome
       </a>
     </section>

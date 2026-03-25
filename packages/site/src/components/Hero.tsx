@@ -1,3 +1,4 @@
+import { CHROME_STORE_URL } from '../config';
 import styles from './Hero.module.css';
 
 export function Hero() {
@@ -12,7 +13,7 @@ export function Hero() {
         Tabzen groups, searches, and manages your browser tabs so you don't have
         to. Smart rules. Instant search. Zero clutter.
       </p>
-      <a href="#" class={styles.cta}>
+      <a href={CHROME_STORE_URL} target="_blank" rel="noopener" class={styles.cta}>
         Add to Chrome — it's free
       </a>
       <div class={styles.subCta}>Works with Chrome and Chromium browsers</div>

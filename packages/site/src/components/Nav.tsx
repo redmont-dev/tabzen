@@ -1,4 +1,5 @@
 import { Logo } from '@tabzen/shared/logo';
+import { CHROME_STORE_URL } from '../config';
 import styles from './Nav.module.css';
 
 export function Nav() {
@@ -10,7 +11,7 @@ export function Nav() {
         <a href="#showcase">How it works</a>
         <a href="#reviews">Reviews</a>
       </div>
-      <a href="#" class={styles.cta}>Add to Chrome</a>
+      <a href={CHROME_STORE_URL} target="_blank" rel="noopener" class={styles.cta}>Add to Chrome</a>
     </nav>
   );
 }
