@@ -8,6 +8,7 @@ import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { QuickActions } from './QuickActions';
 import { TabTree } from './TabTree';
 import { TabzenLogo } from '../components/TabzenLogo';
+import { SessionList } from './SessionList';
 import styles from './App.module.css';
 
 export function App() {
@@ -63,9 +64,10 @@ export function App() {
     await sendMessage({ action: 'cleanUp', windowId: state.windowId });
   }, [state]);
 
-  const handleSave = useCallback(() => {
-    // Placeholder — Plan 4 (SessionManager)
-  }, []);
+  const handleSave = useCallback(async () => {
+    if (!state) return;
+    await sendMessage({ action: 'saveSession', windowId: state.windowId });
+  }, [state]);
 
   const handleCollapseAll = useCallback(async () => {
     if (!state) return;
@@ -134,6 +136,8 @@ export function App() {
           onCloseTab={closeTab}
         />
       )}
+
+      <SessionList />
     </div>
   );
 }
