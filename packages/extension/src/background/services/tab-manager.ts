@@ -43,56 +43,117 @@ function compareTabs(
   return sortOrder === 'asc' ? cmp : -cmp;
 }
 
+/**
+ * Enforce tab order: [Pinned] → [Grouped tabs] → [Ungrouped tabs]
+ * After moving, re-groups tabs to restore group membership (chrome.tabs.move ungroups tabs).
+ */
+async function enforceTabOrder(windowId: number): Promise<void> {
+  const allTabs = await chrome.tabs.query({ windowId });
+  const pinned = allTabs.filter(t => t.pinned);
+  const groups = await chrome.tabGroups.query({ windowId });
+
+  let targetIndex = pinned.length;
+
+  // Move grouped tabs first (in current group order)
+  for (const group of groups) {
+    const groupTabs = allTabs.filter(t => !t.pinned && t.groupId === group.id);
+    const tabIds: number[] = [];
+    for (const tab of groupTabs) {
+      if (tab.id != null) {
+        await chrome.tabs.move(tab.id, { index: targetIndex });
+        tabIds.push(tab.id);
+        targetIndex++;
+      }
+    }
+    // Re-group after moving
+    if (tabIds.length > 0) {
+      await chrome.tabs.group({ tabIds, groupId: group.id });
+    }
+  }
+
+  // Move ungrouped tabs after all groups
+  const ungrouped = allTabs.filter(t => !t.pinned && (t.groupId === undefined || t.groupId === -1 || t.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE));
+  for (const tab of ungrouped) {
+    if (tab.id != null) {
+      await chrome.tabs.move(tab.id, { index: targetIndex });
+      targetIndex++;
+    }
+  }
+}
+
 async function sortTabs(
   windowId: number,
   sortBy: SortBy,
   sortOrder: SortOrder,
   groupId?: number,
 ): Promise<void> {
-  const query: chrome.tabs.QueryInfo = groupId !== undefined
-    ? { windowId, groupId }
-    : { windowId };
-
-  const tabs = await chrome.tabs.query(query);
-  const unpinned = tabs.filter(t => !t.pinned);
-
-  // Determine priority rules and group color
   const workspace = await getActiveWorkspace();
   const priorityRules = workspace?.priorityRules ?? [];
-  let groupColor: string | undefined;
+  const allGroups = await chrome.tabGroups.query({ windowId });
+  const pinnedTabs = await chrome.tabs.query({ windowId, pinned: true });
+  let targetIndex = pinnedTabs.length;
 
-  if (groupId !== undefined && groupId !== -1 && priorityRules.length > 0) {
-    const groups = await chrome.tabGroups.query({ windowId });
-    const group = groups.find(g => g.id === groupId);
-    groupColor = group?.color;
+  // Helper to sort a set of tabs with priority support
+  const sortWithPriority = (tabs: chrome.tabs.Tab[], groupColor?: string) => {
+    const priority: chrome.tabs.Tab[] = [];
+    const normal: chrome.tabs.Tab[] = [];
+    for (const tab of tabs) {
+      if (priorityRules.length > 0 && isPriorityTab(tab, groupColor, priorityRules)) {
+        priority.push(tab);
+      } else {
+        normal.push(tab);
+      }
+    }
+    priority.sort((a, b) => compareTabs(a, b, sortBy, sortOrder));
+    normal.sort((a, b) => compareTabs(a, b, sortBy, sortOrder));
+    return [...priority, ...normal];
+  };
+
+  if (groupId !== undefined) {
+    // Sort only within a specific group
+    const tabs = await chrome.tabs.query({ windowId, groupId });
+    const unpinned = tabs.filter(t => !t.pinned);
+    const group = allGroups.find(g => g.id === groupId);
+    const sorted = sortWithPriority(unpinned, group?.color);
+    const startIdx = unpinned.length > 0 ? Math.min(...unpinned.map(t => t.index)) : 0;
+    const tabIds: number[] = [];
+    for (let i = 0; i < sorted.length; i++) {
+      if (sorted[i].id != null) {
+        await chrome.tabs.move(sorted[i].id!, { index: startIdx + i });
+        tabIds.push(sorted[i].id!);
+      }
+    }
+    if (tabIds.length > 0 && groupId !== -1) {
+      await chrome.tabs.group({ tabIds, groupId });
+    }
+    return;
   }
 
-  // Separate priority and normal tabs
-  const priority: chrome.tabs.Tab[] = [];
-  const normal: chrome.tabs.Tab[] = [];
-
-  for (const tab of unpinned) {
-    if (priorityRules.length > 0 && isPriorityTab(tab, groupColor, priorityRules)) {
-      priority.push(tab);
-    } else {
-      normal.push(tab);
+  // Sort all tabs: each group independently, then ungrouped
+  for (const group of allGroups) {
+    const groupTabs = (await chrome.tabs.query({ windowId, groupId: group.id })).filter(t => !t.pinned);
+    const sorted = sortWithPriority(groupTabs, group.color);
+    const tabIds: number[] = [];
+    for (const tab of sorted) {
+      if (tab.id != null) {
+        await chrome.tabs.move(tab.id, { index: targetIndex });
+        tabIds.push(tab.id);
+        targetIndex++;
+      }
+    }
+    if (tabIds.length > 0) {
+      await chrome.tabs.group({ tabIds, groupId: group.id });
     }
   }
 
-  // Sort each group independently
-  priority.sort((a, b) => compareTabs(a, b, sortBy, sortOrder));
-  normal.sort((a, b) => compareTabs(a, b, sortBy, sortOrder));
-
-  const sorted = [...priority, ...normal];
-
-  const startIndex = unpinned.length > 0
-    ? Math.min(...unpinned.map(t => t.index))
-    : 0;
-
-  for (let i = 0; i < sorted.length; i++) {
-    const tab = sorted[i];
+  // Sort ungrouped tabs and place them after all groups
+  const allTabs = await chrome.tabs.query({ windowId });
+  const ungrouped = allTabs.filter(t => !t.pinned && (t.groupId === undefined || t.groupId === -1 || t.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE));
+  const sortedUngrouped = sortWithPriority(ungrouped);
+  for (const tab of sortedUngrouped) {
     if (tab.id != null) {
-      await chrome.tabs.move(tab.id, { index: startIndex + i });
+      await chrome.tabs.move(tab.id, { index: targetIndex });
+      targetIndex++;
     }
   }
 }
@@ -140,7 +201,6 @@ async function sortGroups(windowId: number, mode: GroupSortMode): Promise<void> 
       (a.title ?? '').localeCompare(b.title ?? '', undefined, { sensitivity: 'base' })
     );
   } else {
-    // Sort by color using user's custom color order
     const settings = await getSettings();
     const colorOrder = settings.colorOrder ?? TAB_GROUP_COLORS;
     sorted = [...groups].sort((a, b) => {
@@ -150,17 +210,33 @@ async function sortGroups(windowId: number, mode: GroupSortMode): Promise<void> 
     });
   }
 
-  // Move each group's tabs in the sorted order. We find pinned tab count to know our starting index.
-  const allTabs = await chrome.tabs.query({ windowId, pinned: true });
-  let targetIndex = allTabs.length; // Start after pinned tabs
+  // Layout: [Pinned] → [Groups in sorted order] → [Ungrouped]
+  const pinnedTabs = await chrome.tabs.query({ windowId, pinned: true });
+  let targetIndex = pinnedTabs.length;
 
+  // Move each group's tabs in sorted order, re-group after moving
   for (const group of sorted) {
     const groupTabs = await chrome.tabs.query({ windowId, groupId: group.id });
+    const tabIds: number[] = [];
     for (const tab of groupTabs) {
       if (tab.id != null) {
         await chrome.tabs.move(tab.id, { index: targetIndex });
+        tabIds.push(tab.id);
         targetIndex++;
       }
+    }
+    if (tabIds.length > 0) {
+      await chrome.tabs.group({ tabIds, groupId: group.id });
+    }
+  }
+
+  // Move ungrouped tabs after all groups
+  const allTabs = await chrome.tabs.query({ windowId });
+  const ungrouped = allTabs.filter(t => !t.pinned && (t.groupId === undefined || t.groupId === -1 || t.groupId === chrome.tabGroups.TAB_GROUP_ID_NONE));
+  for (const tab of ungrouped) {
+    if (tab.id != null) {
+      await chrome.tabs.move(tab.id, { index: targetIndex });
+      targetIndex++;
     }
   }
 }
@@ -195,7 +271,10 @@ async function cleanUp(windowId: number, applyRulesFn?: (windowId: number) => Pr
     await sortGroups(windowId, settings.groupSortMode);
   }
 
-  // Step 5: Collapse all groups
+  // Step 5: Enforce order: [Pinned] → [Groups] → [Ungrouped]
+  await enforceTabOrder(windowId);
+
+  // Step 6: Collapse all groups
   if (settings.cleanupCollapse) {
     await collapseAllGroups(windowId);
   }

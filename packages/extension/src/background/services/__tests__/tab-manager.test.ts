@@ -13,12 +13,23 @@ describe('TabManager', () => {
   });
 
   describe('sortTabs', () => {
-    it('sorts tabs by title A-Z within a window', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+    // Helper: mock tabs.query to return filtered results based on query params
+    function mockTabsForWindow(allTabs: chrome.tabs.Tab[]) {
+      vi.mocked(chrome.tabs.query).mockImplementation(async (query) => {
+        let result = allTabs.filter(t => t.windowId === query.windowId);
+        if (query.pinned !== undefined) result = result.filter(t => t.pinned === query.pinned);
+        if (query.groupId !== undefined) result = result.filter(t => t.groupId === query.groupId);
+        return result;
+      });
+    }
+
+    it('sorts ungrouped tabs by title A-Z within a window', async () => {
+      const tabs = [
         { id: 1, title: 'Banana', url: 'https://b.com', index: 0, windowId: 1, groupId: -1, pinned: false },
         { id: 2, title: 'Apple', url: 'https://a.com', index: 1, windowId: 1, groupId: -1, pinned: false },
         { id: 3, title: 'Cherry', url: 'https://c.com', index: 2, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[];
+      mockTabsForWindow(tabs);
 
       const result = await bus.dispatch({
         action: 'sortTabs',
@@ -32,12 +43,13 @@ describe('TabManager', () => {
       expect(chrome.tabs.move).toHaveBeenCalledWith(2, { index: 0 });
     });
 
-    it('sorts tabs by URL Z-A', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+    it('sorts ungrouped tabs by URL Z-A', async () => {
+      const tabs = [
         { id: 1, title: 'A', url: 'https://a.com', index: 0, windowId: 1, groupId: -1, pinned: false },
         { id: 2, title: 'C', url: 'https://c.com', index: 1, windowId: 1, groupId: -1, pinned: false },
         { id: 3, title: 'B', url: 'https://b.com', index: 2, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[];
+      mockTabsForWindow(tabs);
 
       const result = await bus.dispatch({
         action: 'sortTabs',
@@ -51,11 +63,15 @@ describe('TabManager', () => {
       expect(chrome.tabs.move).toHaveBeenCalledWith(2, { index: 0 });
     });
 
-    it('sorts tabs within a specific group only', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+    it('sorts tabs within a specific group and re-groups them', async () => {
+      const tabs = [
         { id: 1, title: 'Banana', url: 'https://b.com', index: 0, windowId: 1, groupId: 5, pinned: false },
         { id: 2, title: 'Apple', url: 'https://a.com', index: 1, windowId: 1, groupId: 5, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[];
+      mockTabsForWindow(tabs);
+      vi.mocked(chrome.tabGroups.query).mockResolvedValue([
+        { id: 5, title: 'Code', color: 'blue', collapsed: false, windowId: 1 },
+      ] as chrome.tabGroups.TabGroup[]);
 
       const result = await bus.dispatch({
         action: 'sortTabs',
@@ -66,15 +82,17 @@ describe('TabManager', () => {
       });
 
       expect(result.ok).toBe(true);
-      expect(chrome.tabs.query).toHaveBeenCalledWith({ windowId: 1, groupId: 5 });
+      // Should re-group tabs after moving
+      expect(chrome.tabs.group).toHaveBeenCalledWith({ tabIds: [2, 1], groupId: 5 });
     });
 
     it('skips pinned tabs during sort', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      const tabs = [
         { id: 1, title: 'Pinned', url: 'https://p.com', index: 0, windowId: 1, groupId: -1, pinned: true },
         { id: 2, title: 'Banana', url: 'https://b.com', index: 1, windowId: 1, groupId: -1, pinned: false },
         { id: 3, title: 'Apple', url: 'https://a.com', index: 2, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[];
+      mockTabsForWindow(tabs);
 
       await bus.dispatch({
         action: 'sortTabs',
@@ -83,7 +101,6 @@ describe('TabManager', () => {
         sortOrder: 'asc',
       });
 
-      // Pinned tab should not be moved. Apple should move to index 1 (after pinned).
       const moveCalls = vi.mocked(chrome.tabs.move).mock.calls;
       const movedIds = moveCalls.map(c => c[0]);
       expect(movedIds).not.toContain(1);
