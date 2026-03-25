@@ -1,6 +1,6 @@
 import type { MessageBus } from '../message-bus';
 import type { SortBy, SortOrder, Settings, Workspace, PriorityRule, GroupSortMode } from '@/data/types';
-import { SyncStorage } from '@/data/storage';
+import { SyncStorage, LocalStorage } from '@/data/storage';
 import { DEFAULT_SETTINGS, STORAGE_KEYS, TAB_GROUP_COLORS } from '@/shared/constants';
 import { normalizeUrl } from '../utils/url-normalize';
 
@@ -10,7 +10,7 @@ async function getSettings(): Promise<Settings> {
 
 async function getActiveWorkspace(): Promise<Workspace | null> {
   const settings = await getSettings();
-  const workspaces = await SyncStorage.get<Workspace[]>(STORAGE_KEYS.WORKSPACES, []);
+  const workspaces = await LocalStorage.get<Workspace[]>(STORAGE_KEYS.WORKSPACES, []);
   return workspaces.find(w => w.id === settings.activeWorkspaceId) ?? null;
 }
 

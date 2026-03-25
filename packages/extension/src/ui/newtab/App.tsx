@@ -47,14 +47,48 @@ export function App() {
         setSessions(sessResult.data);
       }
 
-      // Load weekly stats
+      // Build stats from live data + historical counters
+      const allTabs = await chrome.tabs.query({});
+      const allGroups = await chrome.tabGroups.query({});
+
+      // Get historical counters (dupes blocked, sessions saved) from analytics
       const statsResult = await sendMessage<DashboardStatsType>({
         action: 'getDashboardStats',
         range: 'week',
       });
-      if (statsResult.ok && statsResult.data) {
-        setStats(statsResult.data);
+      const historical = statsResult.ok && statsResult.data ? statsResult.data : null;
+
+      // Compute live top domains
+      const domainCounts = new Map<string, number>();
+      for (const tab of allTabs) {
+        if (!tab.url) continue;
+        try {
+          const domain = new URL(tab.url).hostname;
+          if (domain && !domain.startsWith('chrome') && !domain.startsWith('newtab')) {
+            domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + 1);
+          }
+        } catch { /* skip invalid URLs */ }
       }
+      const topDomains = Array.from(domainCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([domain, count]) => ({ domain, count }));
+
+      // Compute live group usage
+      const groupUsage = allGroups.map(group => ({
+        name: group.title ?? 'Untitled',
+        color: group.color,
+        count: allTabs.filter(t => t.groupId === group.id).length,
+      }));
+
+      setStats({
+        tabsOpened: allTabs.length,
+        peakTabCount: allTabs.length,
+        duplicatesBlocked: historical?.duplicatesBlocked ?? 0,
+        sessionsUsed: historical?.sessionsUsed ?? 0,
+        topDomains,
+        groupUsage,
+      });
     })();
   }, []);
 
