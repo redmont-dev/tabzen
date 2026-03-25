@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'preact/hooks';
 import { sendMessage } from '@/hooks/use-message';
 import { useKeyboardNav } from '@/hooks/use-keyboard';
-import type { Settings, SortBy, SortOrder } from '@/data/types';
+import type { Settings, Session, SortBy, SortOrder } from '@/data/types';
 import { DEFAULT_SETTINGS } from '@/shared/constants';
 import { SearchBar } from '../components/SearchBar';
 import { SearchResults, type SearchResultItem } from '../components/SearchResults';
@@ -15,10 +15,19 @@ export function App() {
   const [groupCount, setGroupCount] = useState(0);
   const [windowId, setWindowId] = useState<number | null>(null);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [showSessions, setShowSessions] = useState(false);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const showResults = query.length > 0 && results.length > 0;
+
+  const loadSessions = useCallback(async () => {
+    const res = await sendMessage<Session[]>({ action: 'getSessions' });
+    if (res.ok && res.data) {
+      setSessions(res.data.sort((a, b) => b.createdAt - a.createdAt).slice(0, 5));
+    }
+  }, []);
 
   // Fetch initial state
   useEffect(() => {
@@ -40,8 +49,10 @@ export function App() {
       if (settingsRes.ok && settingsRes.data) {
         setSettings(settingsRes.data);
       }
+
+      loadSessions();
     })();
-  }, []);
+  }, [loadSessions]);
 
   const handleSearch = useCallback(async (value: string) => {
     setQuery(value);
@@ -87,6 +98,10 @@ export function App() {
         break;
       case 'collapseAll':
         await sendMessage({ action: 'collapseAll', windowId });
+        break;
+      case 'saveSession':
+        await sendMessage({ action: 'saveSession', windowId });
+        loadSessions();
         break;
     }
 
@@ -137,7 +152,7 @@ export function App() {
 
   const actions = [
     { label: 'Clean up', hint: '\u2318\u21E7U', onClick: () => runAction('cleanUp') },
-    { label: 'Save session', hint: '\u2318\u21E7S', disabled: true, onClick: () => {} },
+    { label: 'Save session', hint: '\u2318\u21E7S', onClick: () => runAction('saveSession') },
     { label: 'Remove duplicates', onClick: () => runAction('removeDuplicates') },
     { label: 'Collapse all groups', onClick: () => runAction('collapseAll') },
   ];
@@ -171,6 +186,40 @@ export function App() {
       )}
 
       <ActionList actions={actions} />
+
+      <div class={styles.section}>
+        <button
+          class={styles.sectionToggle}
+          onClick={() => setShowSessions(!showSessions)}
+        >
+          <span>{showSessions ? '▼' : '▶'} Sessions</span>
+          <span class={styles.sectionCount}>{sessions.length}</span>
+        </button>
+        {showSessions && (
+          <div class={styles.sessionList}>
+            {sessions.length === 0 ? (
+              <div class={styles.sessionEmpty}>No saved sessions</div>
+            ) : (
+              sessions.map(s => (
+                <div key={s.id} class={styles.sessionItem}>
+                  <div class={styles.sessionInfo}>
+                    <span class={styles.sessionName}>{s.name}</span>
+                    <span class={styles.sessionMeta}>{s.tabs.length} tabs</span>
+                  </div>
+                  <button
+                    class={styles.sessionRestore}
+                    onClick={async () => {
+                      await sendMessage({ action: 'restoreSession', sessionId: s.id });
+                      window.close();
+                    }}
+                    title="Restore"
+                  >↗</button>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+      </div>
 
       <SortSection
         sortBy={settings.defaultSortBy}
