@@ -7,6 +7,7 @@ import { SearchResults, type SearchResultItem } from '../components/SearchResult
 import { WorkspaceSwitcher } from './WorkspaceSwitcher';
 import { QuickActions } from './QuickActions';
 import { TabTree } from './TabTree';
+import { TabzenLogo } from '../components/TabzenLogo';
 import styles from './App.module.css';
 
 export function App() {
@@ -92,6 +93,11 @@ export function App() {
 
   return (
     <div class={styles.panel}>
+      <div class={styles.header}>
+        <TabzenLogo size={16} />
+        <span style={{ fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}
+          onClick={() => chrome.runtime.openOptionsPage()}>Settings</span>
+      </div>
       <WorkspaceSwitcher activeWorkspace="Default" />
 
       <div class={styles.searchSection}>

@@ -3,8 +3,45 @@ import type { RulePack } from '@/data/types';
 import { sendMessage } from '@/hooks/use-message';
 import styles from '../App.module.css';
 
+const COLOR_MAP: Record<string, string> = {
+  grey: '#999', blue: '#3b82f6', red: '#ef4444', yellow: '#eab308',
+  green: '#22c55e', pink: '#ec4899', purple: '#a855f7', cyan: '#06b6d4', orange: '#f97316',
+};
+
+function PackRuleList({ pack }: { pack: RulePack }) {
+  return (
+    <div style={{ marginTop: 8, marginBottom: 8 }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--border)', textAlign: 'left' }}>
+            <th style={{ padding: '4px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Type</th>
+            <th style={{ padding: '4px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Pattern</th>
+            <th style={{ padding: '4px 8px', color: 'var(--text-secondary)', fontWeight: 500 }}>Group</th>
+          </tr>
+        </thead>
+        <tbody>
+          {pack.rules.map(rule => (
+            <tr key={rule.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+              <td style={{ padding: '4px 8px', color: 'var(--text-secondary)' }}>{rule.type}</td>
+              <td style={{ padding: '4px 8px', fontFamily: 'monospace', fontSize: 11 }}>{rule.pattern}</td>
+              <td style={{ padding: '4px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                <span style={{
+                  width: 7, height: 7, borderRadius: '50%',
+                  background: COLOR_MAP[rule.color] || '#999', flexShrink: 0,
+                }} />
+                {rule.groupName}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export function RulePacksSection() {
   const [packs, setPacks] = useState<RulePack[]>([]);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -26,7 +63,6 @@ export function RulePacksSection() {
         const text = await file.text();
         const pack = JSON.parse(text) as RulePack;
         await sendMessage({ action: 'importRulePack', pack });
-        // Reload built-in packs
         const res = await sendMessage<RulePack[]>({ action: 'getBuiltInPacks' });
         if (res.ok && res.data) setPacks(res.data);
       } catch {
@@ -70,10 +106,17 @@ export function RulePacksSection() {
               <div class={styles.packDescription}>{pack.description}</div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div class={styles.packRuleCount}>
-                  {pack.rules.length} rules, {pack.priorityRules.length} priority rules
+                  {pack.rules.length} rules
+                  <span
+                    onClick={() => setExpandedId(expandedId === pack.id ? null : pack.id)}
+                    style={{ marginLeft: 8, cursor: 'pointer', color: 'var(--text-primary)', textDecoration: 'underline' }}
+                  >
+                    {expandedId === pack.id ? 'Hide rules' : 'View rules'}
+                  </span>
                 </div>
                 <button class={styles.button} onClick={() => handleApplyPack(pack)}>Apply</button>
               </div>
+              {expandedId === pack.id && <PackRuleList pack={pack} />}
             </div>
           ))
         ) : (

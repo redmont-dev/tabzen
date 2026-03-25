@@ -107,10 +107,16 @@ export function App() {
     setSettings(prev => ({ ...prev, defaultSortBy: sortBy, defaultSortOrder: sortOrder }));
   }, [windowId]);
 
-  const handleOpenPanel = useCallback(() => {
-    // Open side panel. chrome.sidePanel.open requires user gesture,
-    // which a click in the popup satisfies.
-    chrome.sidePanel.setOptions({ enabled: true });
+  const handleOpenPanel = useCallback(async () => {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (tab?.id) {
+        await chrome.sidePanel.open({ tabId: tab.id });
+      }
+    } catch {
+      // Fallback: just enable the panel
+      await chrome.sidePanel.setOptions({ enabled: true });
+    }
     window.close();
   }, []);
 
