@@ -11,6 +11,7 @@ export async function launchBrowser(): Promise<Browser> {
       `--load-extension=${EXTENSION_PATH}`,
       '--no-first-run',
       '--no-default-browser-check',
+      '--start-minimized',
     ],
   });
 }
