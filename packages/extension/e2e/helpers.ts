@@ -19,60 +19,49 @@ export async function launchBrowser(): Promise<Browser> {
 }
 
 export async function getExtensionId(browser: Browser): Promise<string> {
-  // Navigate to chrome://extensions to find the extension ID
-  const page = await browser.newPage();
-  await page.goto('chrome://extensions');
-
-  // The extension ID can be found via the service worker target
-  const targets = browser.targets();
-  const extensionTarget = targets.find(
-    t => t.type() === 'service_worker' && t.url().includes('chrome-extension://')
-  );
-
-  if (!extensionTarget) {
-    // Wait a moment for the extension to load
-    await new Promise(r => setTimeout(r, 2000));
-    const retryTargets = browser.targets();
-    const retryTarget = retryTargets.find(
+  // Retry up to 10 times with 1s delay — service worker may take a moment to start
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const targets = browser.targets();
+    const target = targets.find(
       t => t.type() === 'service_worker' && t.url().includes('chrome-extension://')
     );
-    if (!retryTarget) throw new Error('Extension not found');
-    const match = retryTarget.url().match(/chrome-extension:\/\/([^/]+)/);
-    await page.close();
-    return match![1];
+    if (target) {
+      const match = target.url().match(/chrome-extension:\/\/([^/]+)/);
+      if (match) return match[1];
+    }
+    await wait(1000);
   }
+  throw new Error('Extension service worker not found after 10 attempts');
+}
 
-  const match = extensionTarget.url().match(/chrome-extension:\/\/([^/]+)/);
-  await page.close();
-  return match![1];
+async function openPage(browser: Browser, extensionId: string, path: string): Promise<Page> {
+  const page = await browser.newPage();
+  await page.goto(`chrome-extension://${extensionId}/${path}`, { waitUntil: 'networkidle0' });
+  // Wait for Preact to render (the app div should have children)
+  await page.waitForFunction(
+    () => {
+      const app = document.getElementById('app');
+      return app && app.children.length > 0;
+    },
+    { timeout: 5000 },
+  );
+  return page;
 }
 
 export async function openPopup(browser: Browser, extensionId: string): Promise<Page> {
-  const page = await browser.newPage();
-  await page.goto(`chrome-extension://${extensionId}/popup.html`);
-  await page.waitForSelector('body');
-  return page;
+  return openPage(browser, extensionId, 'popup.html');
 }
 
 export async function openSidePanel(browser: Browser, extensionId: string): Promise<Page> {
-  const page = await browser.newPage();
-  await page.goto(`chrome-extension://${extensionId}/sidepanel.html`);
-  await page.waitForSelector('body');
-  return page;
+  return openPage(browser, extensionId, 'sidepanel.html');
 }
 
 export async function openNewTab(browser: Browser, extensionId: string): Promise<Page> {
-  const page = await browser.newPage();
-  await page.goto(`chrome-extension://${extensionId}/newtab.html`);
-  await page.waitForSelector('body');
-  return page;
+  return openPage(browser, extensionId, 'newtab.html');
 }
 
 export async function openOptions(browser: Browser, extensionId: string): Promise<Page> {
-  const page = await browser.newPage();
-  await page.goto(`chrome-extension://${extensionId}/options.html`);
-  await page.waitForSelector('body');
-  return page;
+  return openPage(browser, extensionId, 'options.html');
 }
 
 export function wait(ms: number): Promise<void> {
