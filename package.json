@@ -9,6 +9,7 @@
     "build:site": "pnpm --filter @tabzen/site build",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
+    "test:e2e": "pnpm --filter @tabzen/extension test:e2e",
     "lint": "pnpm -r lint"
   }
 }
