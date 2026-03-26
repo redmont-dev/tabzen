@@ -19,19 +19,40 @@ export async function launchBrowser(): Promise<Browser> {
 }
 
 export async function getExtensionId(browser: Browser): Promise<string> {
-  // Retry up to 10 times with 1s delay — service worker may take a moment to start
-  for (let attempt = 0; attempt < 10; attempt++) {
+  // Open chrome://extensions to trigger extension initialization
+  const extPage = await browser.newPage();
+  await extPage.goto('chrome://extensions');
+  await wait(2000);
+
+  // Try multiple target types — MV3 service workers are ephemeral
+  for (let attempt = 0; attempt < 15; attempt++) {
     const targets = browser.targets();
-    const target = targets.find(
-      t => t.type() === 'service_worker' && t.url().includes('chrome-extension://')
-    );
-    if (target) {
-      const match = target.url().match(/chrome-extension:\/\/([^/]+)/);
-      if (match) return match[1];
+    for (const target of targets) {
+      const url = target.url();
+      if (url.includes('chrome-extension://') && !url.includes('chrome://extensions')) {
+        const match = url.match(/chrome-extension:\/\/([^/]+)/);
+        if (match) {
+          await extPage.close();
+          return match[1];
+        }
+      }
     }
     await wait(1000);
   }
-  throw new Error('Extension service worker not found after 10 attempts');
+
+  // Last resort: look at all pages for an extension page
+  const pages = await browser.pages();
+  for (const page of pages) {
+    const url = page.url();
+    const match = url.match(/chrome-extension:\/\/([^/]+)/);
+    if (match) {
+      await extPage.close();
+      return match[1];
+    }
+  }
+
+  await extPage.close();
+  throw new Error('Extension not found after 15 attempts');
 }
 
 async function openPage(browser: Browser, extensionId: string, path: string): Promise<Page> {
