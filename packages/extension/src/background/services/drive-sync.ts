@@ -22,7 +22,19 @@ async function setSyncState(state: SyncState): Promise<void> {
 
 async function getAuthToken(): Promise<string> {
   const result = await chrome.identity.getAuthToken({ interactive: true });
+  if (!result.token) throw new Error('Auth token not available');
   return result.token;
+}
+
+function validateSession(data: unknown): data is Session {
+  if (!data || typeof data !== 'object') return false;
+  const obj = data as Record<string, unknown>;
+  return (
+    typeof obj.id === 'string' &&
+    Array.isArray(obj.tabs) &&
+    Array.isArray(obj.groups) &&
+    typeof obj.createdAt === 'number'
+  );
 }
 
 function sessionFileName(session: Session): string {
@@ -121,16 +133,21 @@ export async function registerDriveSync(bus: MessageBus, db: TabzenDB): Promise<
     const sessions = await db.getAllSessions();
     let synced = 0;
 
+    const errors: string[] = [];
     for (const session of sessions) {
-      if (session.driveFileId) {
-        // Update existing file
-        await api.updateFile(session.driveFileId, JSON.stringify(session));
-      } else {
-        // Create new file
-        const driveFile = await api.createFile(sessionFileName(session), JSON.stringify(session));
-        await db.putSession({ ...session, driveFileId: driveFile.id });
+      try {
+        if (session.driveFileId) {
+          // Update existing file
+          await api.updateFile(session.driveFileId, JSON.stringify(session));
+        } else {
+          // Create new file
+          const driveFile = await api.createFile(sessionFileName(session), JSON.stringify(session));
+          await db.putSession({ ...session, driveFileId: driveFile.id });
+        }
+        synced++;
+      } catch (err) {
+        errors.push(`Session "${session.id}": ${err instanceof Error ? err.message : String(err)}`);
       }
-      synced++;
     }
 
     const now = Date.now();
@@ -155,6 +172,7 @@ export async function registerDriveSync(bus: MessageBus, db: TabzenDB): Promise<
       const content = await api.readFile(file.id);
       try {
         const session: Session = JSON.parse(content);
+        if (!validateSession(session)) continue;
         if (existingIds.has(session.id)) continue;
 
         session.driveFileId = file.id;

@@ -55,14 +55,51 @@ export function App() {
         setSessions(sessResult.data);
       }
 
-      // Load weekly stats
+      // Load weekly stats (historical data from analytics)
       const statsResult = await sendMessage<DashboardStatsType>({
         action: 'getDashboardStats',
         range: 'week',
       });
-      if (statsResult.ok && statsResult.data) {
-        setStats(statsResult.data);
+
+      // Query live data directly
+      const allTabs = await chrome.tabs.query({});
+      const allGroups = await chrome.tabGroups.query({});
+
+      // Compute top domains from current tabs
+      const domainCounts = new Map<string, number>();
+      for (const tab of allTabs) {
+        if (!tab.url) continue;
+        try {
+          const domain = new URL(tab.url).hostname;
+          if (domain) domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + 1);
+        } catch { /* skip invalid URLs */ }
       }
+      const topDomains = Array.from(domainCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([domain, count]) => ({ domain, count }));
+
+      // Compute group usage from current groups
+      const groupUsage: Array<{ name: string; color: string; count: number }> = [];
+      for (const group of allGroups) {
+        const groupTabs = allTabs.filter(t => t.groupId === group.id);
+        groupUsage.push({
+          name: group.title ?? 'Untitled',
+          color: group.color,
+          count: groupTabs.length,
+        });
+      }
+
+      // Merge historical counters with live data
+      const historicalStats = statsResult.ok && statsResult.data ? statsResult.data : null;
+      setStats({
+        tabsOpened: allTabs.length,
+        peakTabCount: allTabs.length,
+        duplicatesBlocked: historicalStats?.duplicatesBlocked ?? 0,
+        sessionsUsed: historicalStats?.sessionsUsed ?? 0,
+        topDomains,
+        groupUsage,
+      });
     })();
   }, []);
 

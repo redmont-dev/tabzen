@@ -86,6 +86,10 @@ async function restoreSession(db: TabzenDB, sessionId: string): Promise<void> {
     throw new Error(`Session "${sessionId}" not found`);
   }
 
+  if (!session.tabs || session.tabs.length === 0) {
+    throw new Error('Session has no tabs');
+  }
+
   // Create a new window with the first tab
   const firstTab = session.tabs[0];
   const newWindow = await chrome.windows.create({
@@ -230,7 +234,7 @@ export async function registerSessionManager(bus: MessageBus, existingDb?: Tabze
   bus.register('saveSession', async (req) => {
     const session = await saveSession(db, req.windowId, req.name, req.source);
     // Best-effort backup to Drive (non-blocking)
-    backupSessionIfEnabled(db, session).catch(() => {});
+    backupSessionIfEnabled(db, session).catch(err => console.warn('Drive backup failed:', err));
     return { ok: true, data: session };
   });
 
@@ -264,7 +268,7 @@ export async function registerSessionManager(bus: MessageBus, existingDb?: Tabze
   bus.register('deleteSession', async (req) => {
     const session = await db.getSession(req.sessionId);
     if (session?.driveFileId) {
-      deleteDriveFileIfEnabled(session.driveFileId).catch(() => {});
+      deleteDriveFileIfEnabled(session.driveFileId).catch(err => console.warn('Drive file deletion failed:', err));
     }
     await db.deleteSession(req.sessionId);
     return { ok: true };
@@ -299,20 +303,10 @@ export async function registerSessionManager(bus: MessageBus, existingDb?: Tabze
     }
   });
 
-  // Listen for window close events (save-on-close)
-  chrome.windows.onRemoved.addListener(async (windowId: number) => {
-    try {
-      const settings = await getSettings();
-      if (settings.autoSaveOnClose) {
-        // We can't query tabs of a removed window, so this is a best-effort
-        // The window and its tabs are already gone at this point.
-        // In practice, we'd need to maintain a cache of window state.
-        // For now, this is a placeholder for the close event listener.
-      }
-    } catch {
-      // Ignore errors during window close
-    }
-  });
+  // Note: autoSaveOnClose is not yet implemented.
+  // Saving tabs on window close requires a cached snapshot approach
+  // (tabs are already gone when onRemoved fires).
+  // The setting is disabled in the UI with a "coming soon" label.
 
   return db;
 }
