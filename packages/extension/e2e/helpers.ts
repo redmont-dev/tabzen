@@ -19,20 +19,42 @@ export async function launchBrowser(): Promise<Browser> {
 }
 
 export async function getExtensionId(browser: Browser): Promise<string> {
-  // Open chrome://extensions to trigger extension initialization
-  const extPage = await browser.newPage();
-  await extPage.goto('chrome://extensions');
+  // Use chrome://extensions page to scrape the extension ID from the DOM
+  const page = await browser.newPage();
+  await page.goto('chrome://extensions');
   await wait(2000);
 
-  // Try multiple target types — MV3 service workers are ephemeral
-  for (let attempt = 0; attempt < 15; attempt++) {
+  // Enable developer mode and read the extension ID from the page
+  const extensionId = await page.evaluate(async () => {
+    // Access the extensions page's shadow DOM
+    const manager = document.querySelector('extensions-manager');
+    if (!manager?.shadowRoot) return null;
+
+    const itemList = manager.shadowRoot.querySelector('extensions-item-list');
+    if (!itemList?.shadowRoot) return null;
+
+    const items = itemList.shadowRoot.querySelectorAll('extensions-item');
+    for (const item of items) {
+      const id = item.getAttribute('id');
+      if (id) return id;
+    }
+    return null;
+  });
+
+  if (extensionId) {
+    await page.close();
+    return extensionId;
+  }
+
+  // Fallback: try to find it via service worker targets
+  for (let attempt = 0; attempt < 5; attempt++) {
     const targets = browser.targets();
     for (const target of targets) {
       const url = target.url();
-      if (url.includes('chrome-extension://') && !url.includes('chrome://extensions')) {
+      if (url.includes('chrome-extension://')) {
         const match = url.match(/chrome-extension:\/\/([^/]+)/);
         if (match) {
-          await extPage.close();
+          await page.close();
           return match[1];
         }
       }
@@ -40,19 +62,23 @@ export async function getExtensionId(browser: Browser): Promise<string> {
     await wait(1000);
   }
 
-  // Last resort: look at all pages for an extension page
-  const pages = await browser.pages();
-  for (const page of pages) {
-    const url = page.url();
-    const match = url.match(/chrome-extension:\/\/([^/]+)/);
+  // Last fallback: use waitForTarget which handles lazy service workers
+  try {
+    const target = await browser.waitForTarget(
+      t => t.type() === 'service_worker' && t.url().includes('chrome-extension://'),
+      { timeout: 10000 },
+    );
+    const match = target.url().match(/chrome-extension:\/\/([^/]+)/);
     if (match) {
-      await extPage.close();
+      await page.close();
       return match[1];
     }
+  } catch {
+    // waitForTarget timed out
   }
 
-  await extPage.close();
-  throw new Error('Extension not found after 15 attempts');
+  await page.close();
+  throw new Error('Extension not found');
 }
 
 async function openPage(browser: Browser, extensionId: string, path: string): Promise<Page> {
