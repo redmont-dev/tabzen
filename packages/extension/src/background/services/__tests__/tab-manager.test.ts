@@ -93,8 +93,8 @@ describe('TabManager', () => {
   describe('sortTabs with priority rules', () => {
     it('sorts priority-matching tabs to the top of their group', async () => {
       // Set up settings with priority rules stored in workspace
-      const { storageSyncData } = await import('../../../../tests/setup');
-      storageSyncData['workspaces'] = [{
+      const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
+      storageLocalData['workspaces'] = [{
         id: 'default',
         name: 'Default',
         icon: '',

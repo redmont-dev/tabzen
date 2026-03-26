@@ -1,6 +1,6 @@
 import type { MessageBus } from '../message-bus';
 import type { Settings, Workspace, GroupingRule, TabGroupColor } from '@/data/types';
-import { SyncStorage } from '@/data/storage';
+import { LocalStorage, SyncStorage } from '@/data/storage';
 import { DEFAULT_SETTINGS, STORAGE_KEYS } from '@/shared/constants';
 import { matchRules, extractDomain } from '../utils/rule-matcher';
 
@@ -10,9 +10,12 @@ async function getSettings(): Promise<Settings> {
 
 async function getActiveWorkspace(): Promise<Workspace | null> {
   const settings = await getSettings();
-  const workspaces = await SyncStorage.get<Workspace[]>(STORAGE_KEYS.WORKSPACES, []);
+  const workspaces = await LocalStorage.get<Workspace[]>(STORAGE_KEYS.WORKSPACES, []);
   return workspaces.find(w => w.id === settings.activeWorkspaceId) ?? null;
 }
+
+// Debounce map: tabId -> { url, time }
+const recentAutoGroups = new Map<number, { url: string; time: number }>();
 
 interface GroupTarget {
   groupName: string;
@@ -210,7 +213,13 @@ export function registerRuleEngine(bus: MessageBus): void {
   chrome.tabs.onUpdated.addListener(
     (tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
       if (changeInfo.url) {
-        autoGroupTab(tab);
+        const now = Date.now();
+        const recent = recentAutoGroups.get(tabId);
+        if (recent && recent.url === changeInfo.url && now - recent.time < 2000) {
+          return; // Skip — same tab+url processed recently
+        }
+        recentAutoGroups.set(tabId, { url: changeInfo.url, time: now });
+        autoGroupTab(tab).catch(err => console.error('Auto-group failed:', err));
       }
     },
   );

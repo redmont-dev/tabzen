@@ -1,3 +1,11 @@
+.sectionLabel {
+  font-size: 10px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 10px;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -5,11 +13,11 @@
 }
 
 .stat {
-  text-align: center;
+  text-align: left;
 }
 
 .statValue {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 300;
   letter-spacing: -0.5px;
   color: var(--text-primary);
@@ -20,4 +28,83 @@
   font-size: 11px;
   color: var(--text-secondary);
   margin-top: 2px;
+}
+
+.domainList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.domainRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.domainInfo {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+.domainName {
+  color: var(--text-primary);
+}
+
+.domainCount {
+  color: var(--text-secondary);
+}
+
+.domainBar {
+  height: 3px;
+  background: var(--border-light);
+  border-radius: 2px;
+}
+
+.domainBarFill {
+  height: 3px;
+  background: var(--text-primary);
+  border-radius: 2px;
+}
+
+.groupGrid {
+  display: flex;
+  gap: 12px;
+}
+
+.groupCard {
+  flex: 1;
+  padding: 8px;
+  border: 1px solid var(--border-light);
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.groupDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.groupName {
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.groupCount {
+  font-size: 18px;
+  font-weight: 300;
+  color: var(--text-primary);
+}
+
+.groupCountLabel {
+  font-size: 10px;
+  color: var(--text-secondary);
 }

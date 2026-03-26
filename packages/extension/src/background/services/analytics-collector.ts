@@ -142,7 +142,7 @@ async function getDashboardStats(
   };
 }
 
-export function incrementCounter(metric: 'duplicatesBlocked' | 'sessionsUsed', amount = 1): void {
+function incrementCounter(metric: 'duplicatesBlocked' | 'sessionsUsed', amount = 1): void {
   if (metric === 'duplicatesBlocked') {
     pendingDuplicatesBlocked += amount;
   } else {

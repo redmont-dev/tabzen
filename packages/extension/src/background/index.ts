@@ -94,7 +94,7 @@ chrome.omnibox.onInputEntered.addListener(async (text, disposition) => {
   } else {
     // User pressed Enter on raw text — search and switch to best match
     const response = await bus.dispatch({ action: 'searchTabs', query: text, scope: 'tabs' });
-    if (response.ok && response.data && (response.data as unknown[]).length > 0) {
+    if (response.ok && response.data && Array.isArray(response.data) && response.data.length > 0) {
       const best = (response.data as Array<{ tabId: number; windowId: number }>)[0];
       try {
         await chrome.tabs.update(best.tabId, { active: true });
@@ -136,11 +136,21 @@ function escapeXml(str: string): string {
 
 // --- Auto Duplicate Detection ---
 // Track tabs opened via link clicks (within a 10-second window)
+const MAX_PENDING_LINK_TABS = 100;
 const pendingLinkTabs = new Map<number, number>(); // tabId -> timestamp
 
 chrome.webNavigation.onCreatedNavigationTarget.addListener((details) => {
+  // Cap the map size to prevent unbounded growth
+  if (pendingLinkTabs.size >= MAX_PENDING_LINK_TABS) {
+    // Remove oldest entries
+    const entries = [...pendingLinkTabs.entries()].sort((a, b) => a[1] - b[1]);
+    const toRemove = entries.slice(0, Math.floor(MAX_PENDING_LINK_TABS / 2));
+    for (const [tabId] of toRemove) {
+      pendingLinkTabs.delete(tabId);
+    }
+  }
   pendingLinkTabs.set(details.tabId, Date.now());
-  // Clean up after 10 seconds
+  // Safety cleanup for tabs that never finish loading
   setTimeout(() => pendingLinkTabs.delete(details.tabId), 10_000);
 });
 
@@ -185,7 +195,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         await chrome.tabs.update(existing.id, { active: true });
 
         // Increment analytics counter
-        bus.dispatch({ action: 'incrementAnalyticsCounter', counter: 'duplicatesBlocked' }).catch(() => {});
+        bus.dispatch({ action: 'incrementAnalyticsCounter', counter: 'duplicatesBlocked' }).catch(err => console.warn('Analytics increment failed:', err));
       } catch {
         // Tab may have already been closed
       }
@@ -193,5 +203,25 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     }
   }
 });
+
+// --- Adaptive icon: swap between light and dark icons based on system theme ---
+function updateIcon(isDark: boolean) {
+  const suffix = isDark ? '-dark' : '';
+  chrome.action.setIcon({
+    path: {
+      16: `icons/icon-16${suffix}.png`,
+      32: `icons/icon-32${suffix}.png`,
+      48: `icons/icon-48${suffix}.png`,
+      128: `icons/icon-128${suffix}.png`,
+    },
+  });
+}
+
+// MV3 service workers support matchMedia
+if (typeof matchMedia !== 'undefined') {
+  const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+  updateIcon(darkQuery.matches);
+  darkQuery.addEventListener('change', (e) => updateIcon(e.matches));
+}
 
 console.log('Tabzen background service worker started');

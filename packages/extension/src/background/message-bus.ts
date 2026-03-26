@@ -27,8 +27,12 @@ export class MessageBus {
 
   listen(): void {
     chrome.runtime.onMessage.addListener(
-      (request: MessageRequest, _sender, sendResponse) => {
-        this.dispatch(request).then(sendResponse);
+      (request: unknown, _sender, sendResponse) => {
+        if (!request || typeof request !== 'object' || typeof (request as Record<string, unknown>).action !== 'string') {
+          sendResponse({ ok: false, error: 'Invalid request' });
+          return;
+        }
+        this.dispatch(request as MessageRequest).then(sendResponse);
         return true;
       },
     );

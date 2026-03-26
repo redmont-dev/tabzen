@@ -12,12 +12,13 @@ describe('TabManager + RuleEngine Integration', () => {
     registerRuleEngine(bus);
     registerTabManager(bus, applyRules);
 
-    const { storageSyncData } = await import('../../../../tests/setup');
+    const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
     for (const k of Object.keys(storageSyncData)) delete storageSyncData[k];
+    for (const k of Object.keys(storageLocalData)) delete storageLocalData[k];
   });
 
   it('cleanUp runs full pipeline: dedup, group, sort, collapse', async () => {
-    const { storageSyncData } = await import('../../../../tests/setup');
+    const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
     storageSyncData['settings'] = {
       dedupEnabled: true,
       stripFragments: true,
@@ -34,7 +35,7 @@ describe('TabManager + RuleEngine Integration', () => {
       activeWorkspaceId: 'default',
       colorOrder: ['grey', 'blue', 'red', 'yellow', 'green', 'pink', 'purple', 'cyan', 'orange'],
     };
-    storageSyncData['workspaces'] = [{
+    storageLocalData['workspaces'] = [{
       id: 'default',
       name: 'Default',
       icon: '',
