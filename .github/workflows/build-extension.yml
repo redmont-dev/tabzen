@@ -51,11 +51,15 @@ jobs:
 
       - run: pnpm install
 
+      - name: Install Chrome for Puppeteer
+        run: npx puppeteer browsers install chrome
+        working-directory: packages/extension
+
       - name: Build extension
         run: pnpm build:ext
 
       - name: Run E2E tests with xvfb
-        run: xvfb-run --auto-servernum pnpm test:e2e
+        run: xvfb-run --auto-servernum --server-args="-screen 0 1280x1024x24" pnpm test:e2e
 
   build:
     name: Build & Package
