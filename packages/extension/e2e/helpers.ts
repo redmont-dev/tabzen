@@ -12,6 +12,8 @@ export async function launchBrowser(): Promise<Browser> {
       '--no-first-run',
       '--no-default-browser-check',
       '--start-minimized',
+      // Required for CI (GitHub Actions runs as root in a container)
+      ...(process.env.CI ? ['--no-sandbox', '--disable-setuid-sandbox'] : []),
     ],
   });
 }
