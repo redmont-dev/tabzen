@@ -170,7 +170,7 @@ describe('WorkspaceManager', () => {
       expect(result.ok).toBe(true);
 
       // Verify settings updated
-      const settings = storageSyncData[STORAGE_KEYS.SETTINGS] as any;
+      const settings = storageSyncData[STORAGE_KEYS.SETTINGS] as Record<string, unknown>;
       expect(settings.activeWorkspaceId).toBe(workWs.id);
     });
 

@@ -1,7 +1,7 @@
 import type { MessageBus } from '../message-bus';
 import type { RulePack, GroupingRule, Workspace } from '@/data/types';
-import { LocalStorage } from '@/data/storage';
-import { STORAGE_KEYS } from '@/shared/constants';
+import { LocalStorage, SyncStorage } from '@/data/storage';
+import { STORAGE_KEYS, DEFAULT_SETTINGS, createDefaultWorkspace } from '@/shared/constants';
 import { BUILT_IN_PACKS } from '@/data/built-in-packs';
 
 function generateId(): string {
@@ -20,8 +20,6 @@ function validateRulePack(pack: unknown): pack is RulePack {
 }
 
 async function getActiveWorkspace(): Promise<{ workspace: Workspace; index: number; workspaces: Workspace[] }> {
-  const { SyncStorage } = await import('@/data/storage');
-  const { DEFAULT_SETTINGS, createDefaultWorkspace } = await import('@/shared/constants');
   const settings = await SyncStorage.get(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
   let workspaces = await LocalStorage.get<Workspace[]>(STORAGE_KEYS.WORKSPACES, []);
 

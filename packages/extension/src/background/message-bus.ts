@@ -21,7 +21,9 @@ export class MessageBus {
     try {
       return await handler(request);
     } catch (err) {
-      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      const message = err instanceof Error ? err.message : String(err);
+      if (err instanceof Error) console.error(`MessageBus handler "${request.action}" failed:`, err);
+      return { ok: false, error: message };
     }
   }
 

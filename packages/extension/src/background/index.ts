@@ -11,6 +11,7 @@ import { registerRulePacks } from './services/rule-packs';
 import { initPortManager } from './ports';
 import { SyncStorage } from '@/data/storage';
 import { DEFAULT_SETTINGS, STORAGE_KEYS } from '@/shared/constants';
+import { normalizeUrl } from './utils/url-normalize';
 import type { Settings } from '@/data/types';
 
 const bus = new MessageBus();
@@ -169,7 +170,6 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // Skip non-http URLs
   if (!tab.url.startsWith('http://') && !tab.url.startsWith('https://')) return;
 
-  const { normalizeUrl } = await import('./utils/url-normalize');
   const normalizedNew = normalizeUrl(tab.url, {
     stripFragments: settings.stripFragments,
     stripTrailingSlash: settings.stripTrailingSlash,
@@ -224,4 +224,4 @@ if (typeof matchMedia !== 'undefined') {
   darkQuery.addEventListener('change', (e) => updateIcon(e.matches));
 }
 
-console.log('Tabzen background service worker started');
+if (import.meta.env.DEV) console.log('Tabzen background service worker started');

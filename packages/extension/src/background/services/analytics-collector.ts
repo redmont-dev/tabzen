@@ -142,11 +142,13 @@ async function getDashboardStats(
   };
 }
 
+const MAX_PENDING_COUNTER = 100_000;
+
 function incrementCounter(metric: 'duplicatesBlocked' | 'sessionsUsed', amount = 1): void {
   if (metric === 'duplicatesBlocked') {
-    pendingDuplicatesBlocked += amount;
+    if (pendingDuplicatesBlocked < MAX_PENDING_COUNTER) pendingDuplicatesBlocked += amount;
   } else {
-    pendingSessionsUsed += amount;
+    if (pendingSessionsUsed < MAX_PENDING_COUNTER) pendingSessionsUsed += amount;
   }
 }
 
