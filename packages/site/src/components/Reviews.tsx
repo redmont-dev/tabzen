@@ -47,7 +47,7 @@ const reviews = [
 
 function StarRating({ count }: { count: number }) {
   return (
-    <div class={styles.stars}>
+    <div class={styles.stars} role="img" aria-label={`Rating: ${count} out of 5 stars`}>
       {'★'.repeat(count)}
       {'☆'.repeat(5 - count)}
     </div>

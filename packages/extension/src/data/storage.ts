@@ -5,7 +5,7 @@ function createStorageWrapper(area: chrome.storage.SyncStorageArea | chrome.stor
         const result = await area.get({ [key]: defaultValue });
         return result[key] as T;
       } catch (err) {
-        console.warn(`Storage get("${key}") failed:`, err);
+        console.error(`Storage get("${key}") failed:`, err);
         return defaultValue;
       }
     },
@@ -13,21 +13,24 @@ function createStorageWrapper(area: chrome.storage.SyncStorageArea | chrome.stor
       try {
         await area.set({ [key]: value });
       } catch (err) {
-        console.warn(`Storage set("${key}") failed:`, err);
+        console.error(`Storage set("${key}") failed:`, err);
+        throw err;
       }
     },
     async remove(key: string): Promise<void> {
       try {
         await area.remove(key);
       } catch (err) {
-        console.warn(`Storage remove("${key}") failed:`, err);
+        console.error(`Storage remove("${key}") failed:`, err);
+        throw err;
       }
     },
     async clear(): Promise<void> {
       try {
         await area.clear();
       } catch (err) {
-        console.warn('Storage clear() failed:', err);
+        console.error('Storage clear() failed:', err);
+        throw err;
       }
     },
   };

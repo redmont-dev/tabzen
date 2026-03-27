@@ -26,15 +26,33 @@ async function getAuthToken(): Promise<string> {
   return result.token;
 }
 
+const MAX_SESSION_TABS = 10_000;
+const MAX_SESSION_GROUPS = 1_000;
+const VALID_SOURCES = new Set(['manual', 'auto', 'close']);
+
 function validateSession(data: unknown): data is Session {
   if (!data || typeof data !== 'object') return false;
   const obj = data as Record<string, unknown>;
-  return (
-    typeof obj.id === 'string' &&
-    Array.isArray(obj.tabs) &&
-    Array.isArray(obj.groups) &&
-    typeof obj.createdAt === 'number'
-  );
+
+  if (typeof obj.id !== 'string' || typeof obj.createdAt !== 'number') return false;
+  if (typeof obj.name !== 'string') return false;
+  if (typeof obj.source === 'string' && !VALID_SOURCES.has(obj.source)) return false;
+  if (!Array.isArray(obj.tabs) || !Array.isArray(obj.groups)) return false;
+  if (obj.tabs.length > MAX_SESSION_TABS || obj.groups.length > MAX_SESSION_GROUPS) return false;
+
+  // Validate tab shapes
+  for (const tab of obj.tabs) {
+    if (!tab || typeof tab !== 'object') return false;
+    if (typeof tab.url !== 'string' || typeof tab.title !== 'string') return false;
+  }
+
+  // Validate group shapes
+  for (const group of obj.groups) {
+    if (!group || typeof group !== 'object') return false;
+    if (typeof group.title !== 'string' || typeof group.color !== 'string') return false;
+  }
+
+  return true;
 }
 
 function sessionFileName(session: Session): string {

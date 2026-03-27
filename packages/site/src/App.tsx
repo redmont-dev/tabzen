@@ -26,15 +26,28 @@ export function App() {
     return <Privacy />;
   }
 
+  if (path !== '/' && path !== '') {
+    return (
+      <main style={{ textAlign: 'center', padding: '6rem 2rem' }}>
+        <h1>404</h1>
+        <p style={{ marginTop: '1rem', color: '#999' }}>Page not found.</p>
+        <a href="/" style={{ display: 'inline-block', marginTop: '2rem', color: '#3b82f6' }}>Back to home</a>
+      </main>
+    );
+  }
+
   return (
     <>
+      <a href="#main" class="sr-only-focusable">Skip to main content</a>
       <Nav />
       <Hero />
+      <main id="main">
       <BrowserMockup />
       <FeatureGrid />
       <Showcase />
       <Reviews />
       <FinalCta />
+      </main>
       <Footer />
     </>
   );

@@ -4,7 +4,7 @@ import styles from './Footer.module.css';
 
 function RedmontLogo() {
   return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden="true">
       <rect x="2" y="2" width="20" height="20" rx="2" fill="#1a1a1a" />
       <path d="M7 17L12 7l5 10" stroke="#ffffff" stroke-width="2" stroke-linejoin="round" fill="none" />
     </svg>
