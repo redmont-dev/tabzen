@@ -17,7 +17,6 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
 
   return (
     <div>
-      <div class={styles.sectionLabel}>This week</div>
       <div class={styles.grid}>
         <div class={styles.stat}>
           <div class={styles.statValue}>{stats.tabsOpened}</div>
