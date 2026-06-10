@@ -3,14 +3,18 @@ import 'fake-indexeddb/auto';
 import { MessageBus } from '../../message-bus';
 import { registerSessionManager } from '../session-manager';
 import { DEFAULT_SETTINGS, STORAGE_KEYS, AUTO_SAVE_ALARM_NAME } from '@/shared/constants';
+import { TabzenDB } from '@/data/indexed-db';
 import type { Session } from '@/data/types';
 
 describe('SessionManager', () => {
   let bus: MessageBus;
 
   beforeEach(async () => {
+    // Isolated DB per test to avoid leaking state between tests
+    const db = new TabzenDB(`test-${Math.random().toString(36).slice(2, 10)}`);
+    await db.open();
     bus = new MessageBus();
-    await registerSessionManager(bus);
+    await registerSessionManager(bus, db);
     vi.clearAllMocks();
 
     // Reset storage

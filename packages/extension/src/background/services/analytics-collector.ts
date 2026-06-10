@@ -14,14 +14,17 @@ import { extractDomain } from '../utils/rule-matcher';
 // In-memory counters that accumulate between snapshots
 let pendingDuplicatesBlocked = 0;
 let pendingSessionsUsed = 0;
+let pendingTabsOpened = 0;
 
-function resetCounters(): { duplicatesBlocked: number; sessionsUsed: number } {
+function resetCounters(): { duplicatesBlocked: number; sessionsUsed: number; tabsOpened: number } {
   const result = {
     duplicatesBlocked: pendingDuplicatesBlocked,
     sessionsUsed: pendingSessionsUsed,
+    tabsOpened: pendingTabsOpened,
   };
   pendingDuplicatesBlocked = 0;
   pendingSessionsUsed = 0;
+  pendingTabsOpened = 0;
   return result;
 }
 
@@ -58,6 +61,7 @@ async function takeSnapshot(db: TabzenDB): Promise<AnalyticsSnapshot> {
     topDomains,
     duplicatesBlocked: counters.duplicatesBlocked,
     sessionsUsed: counters.sessionsUsed,
+    tabsOpened: counters.tabsOpened,
   };
 
   await db.putAnalytics(snapshot);
@@ -98,10 +102,10 @@ async function getDashboardStats(
 
   if (snapshots.length === 0) {
     return {
-      tabsOpened: 0,
+      tabsOpened: pendingTabsOpened,
       peakTabCount: 0,
-      duplicatesBlocked: 0,
-      sessionsUsed: 0,
+      duplicatesBlocked: pendingDuplicatesBlocked,
+      sessionsUsed: pendingSessionsUsed,
       topDomains: [],
       groupUsage: [],
     };
@@ -111,21 +115,23 @@ async function getDashboardStats(
   let peakTabCount = 0;
   let totalDuplicatesBlocked = 0;
   let totalSessionsUsed = 0;
+  let totalTabsOpened = 0;
   const domainTotals = new Map<string, number>();
 
   for (const snap of snapshots) {
     if (snap.tabCount > peakTabCount) peakTabCount = snap.tabCount;
     totalDuplicatesBlocked += snap.duplicatesBlocked;
     totalSessionsUsed += snap.sessionsUsed;
+    totalTabsOpened += snap.tabsOpened ?? 0;
 
     for (const d of snap.topDomains) {
       domainTotals.set(d.domain, (domainTotals.get(d.domain) ?? 0) + d.count);
     }
   }
 
-  // Use last snapshot's tab count as "tabs opened" (cumulative approximation)
-  const latestSnapshot = snapshots[snapshots.length - 1];
-  const tabsOpened = latestSnapshot.tabCount;
+  // tabsOpened is the sum of "new tab created" events recorded in the range,
+  // plus the still-pending in-memory counter that hasn't been snapshotted yet.
+  const tabsOpened = totalTabsOpened + pendingTabsOpened;
 
   const topDomains = Array.from(domainTotals.entries())
     .sort((a, b) => b[1] - a[1])
@@ -135,8 +141,8 @@ async function getDashboardStats(
   return {
     tabsOpened,
     peakTabCount,
-    duplicatesBlocked: totalDuplicatesBlocked,
-    sessionsUsed: totalSessionsUsed,
+    duplicatesBlocked: totalDuplicatesBlocked + pendingDuplicatesBlocked,
+    sessionsUsed: totalSessionsUsed + pendingSessionsUsed,
     topDomains,
     groupUsage: [], // Group usage computed from live data, not snapshots
   };
@@ -144,20 +150,26 @@ async function getDashboardStats(
 
 const MAX_PENDING_COUNTER = 100_000;
 
-function incrementCounter(metric: 'duplicatesBlocked' | 'sessionsUsed', amount = 1): void {
-  if (metric === 'duplicatesBlocked') {
-    if (pendingDuplicatesBlocked < MAX_PENDING_COUNTER) pendingDuplicatesBlocked += amount;
-  } else {
-    if (pendingSessionsUsed < MAX_PENDING_COUNTER) pendingSessionsUsed += amount;
+function incrementCounter(metric: 'duplicatesBlocked' | 'sessionsUsed' | 'tabsOpened', amount = 1): void {
+  switch (metric) {
+    case 'duplicatesBlocked':
+      if (pendingDuplicatesBlocked < MAX_PENDING_COUNTER) pendingDuplicatesBlocked += amount;
+      break;
+    case 'sessionsUsed':
+      if (pendingSessionsUsed < MAX_PENDING_COUNTER) pendingSessionsUsed += amount;
+      break;
+    case 'tabsOpened':
+      if (pendingTabsOpened < MAX_PENDING_COUNTER) pendingTabsOpened += amount;
+      break;
   }
 }
 
 // Exported for testing
 export { takeSnapshot, pruneOldData, getDashboardStats, resetCounters };
 
-export async function registerAnalyticsCollector(bus: MessageBus): Promise<void> {
-  const db = new TabzenDB(`tabzen-analytics-${Math.random().toString(36).slice(2, 8)}`);
-  await db.open();
+export async function registerAnalyticsCollector(bus: MessageBus, existingDb?: TabzenDB): Promise<void> {
+  const db = existingDb ?? new TabzenDB();
+  if (!existingDb) await db.open();
 
   // Prune old data on startup
   await pruneOldData(db);
@@ -180,6 +192,12 @@ export async function registerAnalyticsCollector(bus: MessageBus): Promise<void>
   bus.register('takeAnalyticsSnapshot', async () => {
     const snapshot = await takeSnapshot(db);
     return { ok: true, data: snapshot };
+  });
+
+  // Count every newly created tab (cheap; lives entirely in memory until the
+  // next snapshot flushes it to IndexedDB).
+  chrome.tabs.onCreated.addListener(() => {
+    incrementCounter('tabsOpened');
   });
 
   // Set up periodic snapshot alarm

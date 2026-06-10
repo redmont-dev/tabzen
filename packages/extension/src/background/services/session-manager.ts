@@ -228,7 +228,7 @@ async function configureAutoSave(db: TabzenDB): Promise<void> {
 }
 
 export async function registerSessionManager(bus: MessageBus, existingDb?: TabzenDB): Promise<TabzenDB> {
-  const db = existingDb ?? new TabzenDB(`tabzen-sessions-${Math.random().toString(36).slice(2, 8)}`);
+  const db = existingDb ?? new TabzenDB();
   if (!existingDb) await db.open();
 
   bus.register('saveSession', async (req) => {
@@ -257,11 +257,13 @@ export async function registerSessionManager(bus: MessageBus, existingDb?: Tabze
       return { ok: false, error: `Session "${req.sessionId}" not found` };
     }
     await restoreSession(db, req.sessionId);
+    bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'sessionsUsed' }).catch(() => {});
     return { ok: true };
   });
 
   bus.register('restoreSessionTabs', async (req) => {
     await restoreSessionTabs(db, req.sessionId, req.tabIndices);
+    bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'sessionsUsed' }).catch(() => {});
     return { ok: true };
   });
 

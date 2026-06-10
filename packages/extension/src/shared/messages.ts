@@ -34,7 +34,7 @@ interface GetSuggestedRulesRequest { action: 'getSuggestedRules'; windowId: numb
 // Analytics messages
 interface GetAnalyticsRequest { action: 'getAnalytics'; from: number; to: number; }
 interface GetDashboardStatsRequest { action: 'getDashboardStats'; range: AnalyticsTimeRange; }
-interface IncrementAnalyticsCounterRequest { action: 'incrementAnalyticsCounter'; metric: 'duplicatesBlocked' | 'sessionsUsed'; amount?: number; }
+interface IncrementAnalyticsCounterRequest { action: 'incrementAnalyticsCounter'; metric: 'duplicatesBlocked' | 'sessionsUsed' | 'tabsOpened'; amount?: number; }
 interface TakeAnalyticsSnapshotRequest { action: 'takeAnalyticsSnapshot'; }
 
 // Rule pack messages

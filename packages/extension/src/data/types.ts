@@ -87,6 +87,7 @@ export interface AnalyticsSnapshot {
   topDomains: { domain: string; count: number }[];
   duplicatesBlocked: number;
   sessionsUsed: number;
+  tabsOpened: number;
 }
 
 export type AnalyticsTimeRange = 'today' | 'week' | 'month' | '90d';

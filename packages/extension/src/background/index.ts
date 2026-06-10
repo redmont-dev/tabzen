@@ -189,13 +189,26 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     });
 
     if (normalizedNew === normalizedExisting) {
-      // Duplicate found — close the new tab and switch to the existing one
+      // Duplicate found — replace the original with the newly loaded tab.
+      // If the original was pinned, fall back to keeping it (don't kill pinned).
       try {
-        await chrome.tabs.remove(tabId);
-        await chrome.tabs.update(existing.id, { active: true });
+        if (existing.pinned) {
+          await chrome.tabs.remove(tabId);
+          await chrome.tabs.update(existing.id, { active: true });
+        } else {
+          const targetGroupId = existing.groupId;
+          await chrome.tabs.remove(existing.id);
+          // Preserve grouping: move the new tab into the original's group.
+          if (tab.id != null && targetGroupId != null && targetGroupId !== -1) {
+            try {
+              await chrome.tabs.group({ tabIds: tab.id, groupId: targetGroupId });
+            } catch {
+              // Group may have been removed when the last member was closed
+            }
+          }
+        }
 
-        // Increment analytics counter
-        bus.dispatch({ action: 'incrementAnalyticsCounter', counter: 'duplicatesBlocked' }).catch(err => console.warn('Analytics increment failed:', err));
+        bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'duplicatesBlocked' }).catch(err => console.warn('Analytics increment failed:', err));
       } catch {
         // Tab may have already been closed
       }

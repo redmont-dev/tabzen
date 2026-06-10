@@ -5,6 +5,7 @@ import {
   registerAnalyticsCollector,
   resetCounters,
 } from '../analytics-collector';
+import { TabzenDB } from '@/data/indexed-db';
 import type { AnalyticsSnapshot, DashboardStats } from '@/data/types';
 
 describe('AnalyticsCollector', () => {
@@ -14,8 +15,12 @@ describe('AnalyticsCollector', () => {
     vi.clearAllMocks();
     resetCounters();
 
+    // Isolated DB per test to avoid leaking state between tests
+    const db = new TabzenDB(`test-${Math.random().toString(36).slice(2, 10)}`);
+    await db.open();
+
     bus = new MessageBus();
-    await registerAnalyticsCollector(bus);
+    await registerAnalyticsCollector(bus, db);
 
     // Reset storage
     const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
