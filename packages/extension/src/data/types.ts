@@ -96,6 +96,8 @@ export interface SyncStatus {
   enabled: boolean;
   lastSyncTime: number | null;
   sessionCount: number;
+  lastError: string | null;
+  lastErrorTime: number | null;
 }
 
 export interface DashboardStats {
@@ -126,7 +128,6 @@ export interface Settings {
   autoSaveSchedule: 'disabled' | 'hourly' | 'daily';
   autoSaveDailyTime: string;
   autoSaveOnClose: boolean;
-  autoSaveCountdown: number;
   autoSaveSkipConfirm: boolean;
   activeWorkspaceId: string;
   telemetryEnabled: boolean;

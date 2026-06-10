@@ -128,4 +128,68 @@ describe('SearchIndex', () => {
     expect(result.data[0].groupName).toBeNull();
     expect(result.data[0].groupColor).toBeNull();
   });
+
+  describe('session scope', () => {
+    const sessions = [
+      {
+        id: 's1',
+        name: 'Work research',
+        workspaceId: null,
+        createdAt: 100,
+        source: 'manual',
+        tabs: [{ url: 'https://github.com/org/repo', title: 'GitHub Repo', pinned: false, groupId: null }],
+        groups: [],
+        driveFileId: null,
+      },
+      {
+        id: 's2',
+        name: 'Vacation planning',
+        workspaceId: null,
+        createdAt: 200,
+        source: 'manual',
+        tabs: [{ url: 'https://maps.example.com', title: 'Maps', pinned: false, groupId: null }],
+        groups: [],
+        driveFileId: null,
+      },
+    ];
+
+    beforeEach(() => {
+      bus.register('getSessions', async () => ({ ok: true, data: sessions }));
+    });
+
+    it('matches sessions by name for sessions scope', async () => {
+      const result = await registerAndDispatch('vacation', 'sessions');
+      expect(result.ok).toBe(true);
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0]).toMatchObject({ kind: 'session', sessionId: 's2', tabCount: 1 });
+    });
+
+    it('matches sessions by contained tab title', async () => {
+      const result = await registerAndDispatch('github repo', 'sessions');
+      expect(result.ok).toBe(true);
+      expect(result.data[0]).toMatchObject({ kind: 'session', sessionId: 's1' });
+    });
+
+    it('returns both tabs and sessions for all scope', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValue([
+        { id: 1, title: 'GitHub - Open Tab', url: 'https://github.com', windowId: 1, index: 0, groupId: -1 },
+      ] as chrome.tabs.Tab[]);
+      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+
+      const result = await registerAndDispatch('github', 'all');
+      expect(result.ok).toBe(true);
+      const kinds = (result.data as Array<{ kind: string }>).map(r => r.kind);
+      expect(kinds).toContain('tab');
+      expect(kinds).toContain('session');
+    });
+
+    it('does not include sessions for tabs scope', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValue([]);
+      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+
+      const result = await registerAndDispatch('vacation', 'tabs');
+      expect(result.ok).toBe(true);
+      expect(result.data).toHaveLength(0);
+    });
+  });
 });

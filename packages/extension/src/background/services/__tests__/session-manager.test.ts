@@ -2,25 +2,44 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 import { MessageBus } from '../../message-bus';
 import { registerSessionManager } from '../session-manager';
-import { DEFAULT_SETTINGS, STORAGE_KEYS, AUTO_SAVE_ALARM_NAME } from '@/shared/constants';
+import {
+  DEFAULT_SETTINGS,
+  STORAGE_KEYS,
+  AUTO_SAVE_ALARM_NAME,
+  WINDOW_SNAPSHOT_PREFIX,
+} from '@/shared/constants';
 import { TabzenDB } from '@/data/indexed-db';
 import type { Session } from '@/data/types';
+
+async function registerFreshManager() {
+  const db = new TabzenDB(`test-${Math.random().toString(36).slice(2, 10)}`);
+  await db.open();
+  const bus = new MessageBus();
+  const { ready } = registerSessionManager(bus, db);
+  await ready;
+  // Let the startup configureAutoSave chain settle
+  await new Promise(resolve => setTimeout(resolve, 0));
+  return bus;
+}
 
 describe('SessionManager', () => {
   let bus: MessageBus;
 
   beforeEach(async () => {
+    // Reset storage first so registration reads clean settings
+    const { storageSyncData, storageLocalData, storageSessionData } = await import('../../../../tests/setup');
+    for (const k of Object.keys(storageSyncData)) delete storageSyncData[k];
+    for (const k of Object.keys(storageLocalData)) delete storageLocalData[k];
+    for (const k of Object.keys(storageSessionData)) delete storageSessionData[k];
+
     // Isolated DB per test to avoid leaking state between tests
     const db = new TabzenDB(`test-${Math.random().toString(36).slice(2, 10)}`);
     await db.open();
     bus = new MessageBus();
     await registerSessionManager(bus, db);
+    // Let the startup configureAutoSave chain settle before clearing mocks
+    await new Promise(resolve => setTimeout(resolve, 0));
     vi.clearAllMocks();
-
-    // Reset storage
-    const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
-    for (const k of Object.keys(storageSyncData)) delete storageSyncData[k];
-    for (const k of Object.keys(storageLocalData)) delete storageLocalData[k];
   });
 
   describe('saveSession', () => {
@@ -289,6 +308,131 @@ describe('SessionManager', () => {
       const result = await bus.dispatch({ action: 'configureAutoSave' });
       expect(result.ok).toBe(true);
       expect(chrome.alarms.clear).toHaveBeenCalledWith(AUTO_SAVE_ALARM_NAME);
+    });
+  });
+
+  describe('auto-save startup wiring', () => {
+    it('schedules the alarm from persisted settings at registration', async () => {
+      const { storageSyncData } = await import('../../../../tests/setup');
+      storageSyncData[STORAGE_KEYS.SETTINGS] = {
+        ...DEFAULT_SETTINGS,
+        autoSaveSchedule: 'hourly',
+      };
+
+      await registerFreshManager();
+
+      expect(chrome.alarms.create).toHaveBeenCalledWith(
+        AUTO_SAVE_ALARM_NAME,
+        expect.objectContaining({ periodInMinutes: 60 }),
+      );
+    });
+
+    it('clears the alarm at registration when auto-save is disabled', async () => {
+      const { storageSyncData } = await import('../../../../tests/setup');
+      storageSyncData[STORAGE_KEYS.SETTINGS] = { ...DEFAULT_SETTINGS };
+
+      await registerFreshManager();
+
+      expect(chrome.alarms.clear).toHaveBeenCalledWith(AUTO_SAVE_ALARM_NAME);
+      expect(chrome.alarms.create).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('save-on-close', () => {
+    function lastWindowRemovedListener() {
+      const calls = vi.mocked(chrome.windows.onRemoved.addListener).mock.calls;
+      return calls[calls.length - 1][0] as (windowId: number) => Promise<void>;
+    }
+
+    it('saves the cached snapshot as a session when a window closes', async () => {
+      const { storageSyncData, storageSessionData } = await import('../../../../tests/setup');
+      storageSyncData[STORAGE_KEYS.SETTINGS] = { ...DEFAULT_SETTINGS, autoSaveOnClose: true };
+      storageSessionData[`${WINDOW_SNAPSHOT_PREFIX}7`] = {
+        tabs: [
+          { url: 'https://a.com', title: 'A', pinned: false, groupId: null },
+          { url: 'https://b.com', title: 'B', pinned: false, groupId: null },
+        ],
+        groups: [],
+      };
+
+      const freshBus = await registerFreshManager();
+      await lastWindowRemovedListener()(7);
+
+      const result = await freshBus.dispatch({ action: 'getSessions' });
+      const sessions = result.data as Session[];
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].source).toBe('close');
+      expect(sessions[0].tabs).toHaveLength(2);
+      expect(storageSessionData[`${WINDOW_SNAPSHOT_PREFIX}7`]).toBeUndefined();
+      expect(chrome.notifications.create).toHaveBeenCalled();
+    });
+
+    it('skips single-tab windows', async () => {
+      const { storageSyncData, storageSessionData } = await import('../../../../tests/setup');
+      storageSyncData[STORAGE_KEYS.SETTINGS] = { ...DEFAULT_SETTINGS, autoSaveOnClose: true };
+      storageSessionData[`${WINDOW_SNAPSHOT_PREFIX}8`] = {
+        tabs: [{ url: 'https://a.com', title: 'A', pinned: false, groupId: null }],
+        groups: [],
+      };
+
+      const freshBus = await registerFreshManager();
+      await lastWindowRemovedListener()(8);
+
+      const result = await freshBus.dispatch({ action: 'getSessions' });
+      expect(result.data as Session[]).toHaveLength(0);
+      expect(storageSessionData[`${WINDOW_SNAPSHOT_PREFIX}8`]).toBeUndefined();
+    });
+
+    it('does nothing when save-on-close is disabled', async () => {
+      const { storageSyncData, storageSessionData } = await import('../../../../tests/setup');
+      storageSyncData[STORAGE_KEYS.SETTINGS] = { ...DEFAULT_SETTINGS, autoSaveOnClose: false };
+      storageSessionData[`${WINDOW_SNAPSHOT_PREFIX}9`] = {
+        tabs: [
+          { url: 'https://a.com', title: 'A', pinned: false, groupId: null },
+          { url: 'https://b.com', title: 'B', pinned: false, groupId: null },
+        ],
+        groups: [],
+      };
+
+      const freshBus = await registerFreshManager();
+      await lastWindowRemovedListener()(9);
+
+      const result = await freshBus.dispatch({ action: 'getSessions' });
+      expect(result.data as Session[]).toHaveLength(0);
+    });
+
+    it('caches a debounced window snapshot after tab events', async () => {
+      const { storageSyncData, storageSessionData } = await import('../../../../tests/setup');
+      storageSyncData[STORAGE_KEYS.SETTINGS] = { ...DEFAULT_SETTINGS, autoSaveOnClose: true };
+
+      await registerFreshManager();
+      const updatedCalls = vi.mocked(chrome.tabs.onUpdated.addListener).mock.calls;
+      const listener = updatedCalls[updatedCalls.length - 1][0] as (
+        tabId: number,
+        changeInfo: chrome.tabs.TabChangeInfo,
+        tab: chrome.tabs.Tab,
+      ) => void;
+
+      vi.mocked(chrome.tabs.query).mockResolvedValue([
+        { id: 1, title: 'A', url: 'https://a.com', windowId: 3, groupId: -1, pinned: false },
+        { id: 2, title: 'B', url: 'https://b.com', windowId: 3, groupId: -1, pinned: false },
+      ] as chrome.tabs.Tab[]);
+      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+
+      vi.useFakeTimers();
+      try {
+        listener(1, { status: 'complete' }, { windowId: 3 } as chrome.tabs.Tab);
+        await vi.advanceTimersByTimeAsync(600);
+      } finally {
+        vi.useRealTimers();
+      }
+
+      expect(storageSessionData[`${WINDOW_SNAPSHOT_PREFIX}3`]).toMatchObject({
+        tabs: [
+          expect.objectContaining({ url: 'https://a.com' }),
+          expect.objectContaining({ url: 'https://b.com' }),
+        ],
+      });
     });
   });
 

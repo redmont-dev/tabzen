@@ -1,34 +1,67 @@
 import type { MessageBus } from '../message-bus';
 import type { AnalyticsSnapshot, AnalyticsTimeRange, DashboardStats, Settings } from '@/data/types';
 import { TabzenDB } from '@/data/indexed-db';
-import { SyncStorage } from '@/data/storage';
+import { SyncStorage, LocalStorage } from '@/data/storage';
 import {
   DEFAULT_SETTINGS,
   STORAGE_KEYS,
   MAX_ANALYTICS_DAYS,
   ANALYTICS_SNAPSHOT_INTERVAL,
   ANALYTICS_ALARM_NAME,
+  PENDING_ANALYTICS_KEY,
 } from '@/shared/constants';
 import { extractDomain } from '../utils/rule-matcher';
 
-// In-memory counters that accumulate between snapshots
-let pendingDuplicatesBlocked = 0;
-let pendingSessionsUsed = 0;
-let pendingTabsOpened = 0;
+interface PendingCounters {
+  duplicatesBlocked: number;
+  sessionsUsed: number;
+  tabsOpened: number;
+}
 
-function resetCounters(): { duplicatesBlocked: number; sessionsUsed: number; tabsOpened: number } {
-  const result = {
-    duplicatesBlocked: pendingDuplicatesBlocked,
-    sessionsUsed: pendingSessionsUsed,
-    tabsOpened: pendingTabsOpened,
-  };
-  pendingDuplicatesBlocked = 0;
-  pendingSessionsUsed = 0;
-  pendingTabsOpened = 0;
+const ZERO_COUNTERS: PendingCounters = { duplicatesBlocked: 0, sessionsUsed: 0, tabsOpened: 0 };
+
+// Counters accumulate between snapshots. They are written through to
+// chrome.storage.local on every increment so MV3 service-worker termination
+// doesn't lose them.
+let pending: PendingCounters = { ...ZERO_COUNTERS };
+
+// Merge (not overwrite) persisted counters so increments that land before the
+// load completes are preserved.
+const countersReady: Promise<void> = LocalStorage.get<PendingCounters>(PENDING_ANALYTICS_KEY, ZERO_COUNTERS)
+  .then(stored => {
+    pending = {
+      duplicatesBlocked: pending.duplicatesBlocked + stored.duplicatesBlocked,
+      sessionsUsed: pending.sessionsUsed + stored.sessionsUsed,
+      tabsOpened: pending.tabsOpened + stored.tabsOpened,
+    };
+  })
+  .catch(err => console.warn('Failed to load pending analytics counters:', err));
+
+function persistCounters(): void {
+  countersReady.then(() =>
+    LocalStorage.set(PENDING_ANALYTICS_KEY, { ...pending })
+      .catch(err => console.warn('Failed to persist analytics counters:', err)),
+  );
+}
+
+function resetCounters(): PendingCounters {
+  const result = { ...pending };
+  pending = { ...ZERO_COUNTERS };
+  persistCounters();
   return result;
 }
 
+const MAX_PENDING_COUNTER = 100_000;
+
+function incrementCounter(metric: keyof PendingCounters, amount = 1): void {
+  if (pending[metric] < MAX_PENDING_COUNTER) {
+    pending[metric] += amount;
+    persistCounters();
+  }
+}
+
 async function takeSnapshot(db: TabzenDB): Promise<AnalyticsSnapshot> {
+  await countersReady;
   const settings = await SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
 
   // Get all tabs across all windows
@@ -73,6 +106,8 @@ async function pruneOldData(db: TabzenDB): Promise<void> {
   await db.pruneAnalytics(cutoff);
 }
 
+const VALID_RANGES: ReadonlySet<AnalyticsTimeRange> = new Set(['today', 'week', 'month', '90d']);
+
 function getTimeRangeMs(range: AnalyticsTimeRange): number {
   const now = Date.now();
   switch (range) {
@@ -94,29 +129,39 @@ async function getDashboardStats(
   db: TabzenDB,
   range: AnalyticsTimeRange,
 ): Promise<DashboardStats> {
+  await countersReady;
   const now = Date.now();
   const rangeMs = getTimeRangeMs(range);
   const from = now - rangeMs;
 
   const snapshots = await db.getAnalytics(from, now);
 
-  if (snapshots.length === 0) {
-    return {
-      tabsOpened: pendingTabsOpened,
-      peakTabCount: 0,
-      duplicatesBlocked: pendingDuplicatesBlocked,
-      sessionsUsed: pendingSessionsUsed,
-      topDomains: [],
-      groupUsage: [],
-    };
-  }
+  // Live state counts as one more data point: peak tab count and domain
+  // totals include the tabs currently open, and group usage is always live.
+  const [liveTabs, liveGroups] = await Promise.all([
+    chrome.tabs.query({}),
+    chrome.tabGroups.query({}),
+  ]);
 
-  // Aggregate stats
-  let peakTabCount = 0;
+  const groupUsage = liveGroups.map(g => ({
+    name: g.title || 'Untitled',
+    color: g.color,
+    count: liveTabs.filter(t => t.groupId === g.id).length,
+  }));
+
+  let peakTabCount = liveTabs.length;
   let totalDuplicatesBlocked = 0;
   let totalSessionsUsed = 0;
   let totalTabsOpened = 0;
   const domainTotals = new Map<string, number>();
+
+  for (const tab of liveTabs) {
+    if (!tab.url) continue;
+    const domain = extractDomain(tab.url);
+    if (domain) {
+      domainTotals.set(domain, (domainTotals.get(domain) ?? 0) + 1);
+    }
+  }
 
   for (const snap of snapshots) {
     if (snap.tabCount > peakTabCount) peakTabCount = snap.tabCount;
@@ -129,57 +174,43 @@ async function getDashboardStats(
     }
   }
 
-  // tabsOpened is the sum of "new tab created" events recorded in the range,
-  // plus the still-pending in-memory counter that hasn't been snapshotted yet.
-  const tabsOpened = totalTabsOpened + pendingTabsOpened;
-
   const topDomains = Array.from(domainTotals.entries())
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
     .map(([domain, count]) => ({ domain, count }));
 
+  // tabsOpened is the sum of "new tab created" events recorded in the range,
+  // plus the still-pending counter that hasn't been snapshotted yet.
   return {
-    tabsOpened,
+    tabsOpened: totalTabsOpened + pending.tabsOpened,
     peakTabCount,
-    duplicatesBlocked: totalDuplicatesBlocked + pendingDuplicatesBlocked,
-    sessionsUsed: totalSessionsUsed + pendingSessionsUsed,
+    duplicatesBlocked: totalDuplicatesBlocked + pending.duplicatesBlocked,
+    sessionsUsed: totalSessionsUsed + pending.sessionsUsed,
     topDomains,
-    groupUsage: [], // Group usage computed from live data, not snapshots
+    groupUsage,
   };
-}
-
-const MAX_PENDING_COUNTER = 100_000;
-
-function incrementCounter(metric: 'duplicatesBlocked' | 'sessionsUsed' | 'tabsOpened', amount = 1): void {
-  switch (metric) {
-    case 'duplicatesBlocked':
-      if (pendingDuplicatesBlocked < MAX_PENDING_COUNTER) pendingDuplicatesBlocked += amount;
-      break;
-    case 'sessionsUsed':
-      if (pendingSessionsUsed < MAX_PENDING_COUNTER) pendingSessionsUsed += amount;
-      break;
-    case 'tabsOpened':
-      if (pendingTabsOpened < MAX_PENDING_COUNTER) pendingTabsOpened += amount;
-      break;
-  }
 }
 
 // Exported for testing
 export { takeSnapshot, pruneOldData, getDashboardStats, resetCounters };
 
-export async function registerAnalyticsCollector(bus: MessageBus, existingDb?: TabzenDB): Promise<void> {
+export function registerAnalyticsCollector(bus: MessageBus, existingDb?: TabzenDB): { db: TabzenDB; ready: Promise<void> } {
   const db = existingDb ?? new TabzenDB();
-  if (!existingDb) await db.open();
-
-  // Prune old data on startup
-  await pruneOldData(db);
+  const dbReady: Promise<void> = existingDb ? Promise.resolve() : db.open();
+  const ready = dbReady.then(() => pruneOldData(db));
+  ready.catch(err => console.error('AnalyticsCollector init failed:', err));
 
   bus.register('getAnalytics', async (req) => {
+    await ready;
     const snapshots = await db.getAnalytics(req.from, req.to);
     return { ok: true, data: snapshots };
   });
 
   bus.register('getDashboardStats', async (req) => {
+    if (!VALID_RANGES.has(req.range)) {
+      return { ok: false, error: `Invalid time range "${req.range}"` };
+    }
+    await ready;
     const stats = await getDashboardStats(db, req.range);
     return { ok: true, data: stats };
   });
@@ -190,12 +221,13 @@ export async function registerAnalyticsCollector(bus: MessageBus, existingDb?: T
   });
 
   bus.register('takeAnalyticsSnapshot', async () => {
+    await ready;
     const snapshot = await takeSnapshot(db);
     return { ok: true, data: snapshot };
   });
 
-  // Count every newly created tab (cheap; lives entirely in memory until the
-  // next snapshot flushes it to IndexedDB).
+  // Count every newly created tab (persisted write-through, so service-worker
+  // termination doesn't lose it).
   chrome.tabs.onCreated.addListener(() => {
     incrementCounter('tabsOpened');
   });
@@ -209,10 +241,13 @@ export async function registerAnalyticsCollector(bus: MessageBus, existingDb?: T
   chrome.alarms.onAlarm.addListener(async (alarm: chrome.alarms.Alarm) => {
     if (alarm.name === ANALYTICS_ALARM_NAME) {
       try {
+        await ready;
         await takeSnapshot(db);
       } catch {
         // Snapshot failed, will retry next interval
       }
     }
   });
+
+  return { db, ready };
 }

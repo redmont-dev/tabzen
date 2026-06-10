@@ -8,16 +8,38 @@ import { SYNC_STATE_KEY } from '@/shared/constants';
 interface SyncState {
   enabled: boolean;
   lastSyncTime: number | null;
+  lastError: string | null;
+  lastErrorTime: number | null;
 }
 
-const DEFAULT_SYNC_STATE: SyncState = { enabled: false, lastSyncTime: null };
+const DEFAULT_SYNC_STATE: SyncState = {
+  enabled: false,
+  lastSyncTime: null,
+  lastError: null,
+  lastErrorTime: null,
+};
 
 async function getSyncState(): Promise<SyncState> {
-  return LocalStorage.get<SyncState>(SYNC_STATE_KEY, DEFAULT_SYNC_STATE);
+  const stored = await LocalStorage.get<Partial<SyncState>>(SYNC_STATE_KEY, DEFAULT_SYNC_STATE);
+  return { ...DEFAULT_SYNC_STATE, ...stored };
 }
 
 async function setSyncState(state: SyncState): Promise<void> {
   await LocalStorage.set(SYNC_STATE_KEY, state);
+}
+
+async function recordSyncError(err: unknown): Promise<void> {
+  const state = await getSyncState();
+  await setSyncState({
+    ...state,
+    lastError: err instanceof Error ? err.message : String(err),
+    lastErrorTime: Date.now(),
+  });
+}
+
+async function recordSyncSuccess(): Promise<void> {
+  const state = await getSyncState();
+  await setSyncState({ ...state, lastSyncTime: Date.now(), lastError: null, lastErrorTime: null });
 }
 
 async function getAuthToken(): Promise<string> {
@@ -77,9 +99,10 @@ export async function backupSessionIfEnabled(
       await db.putSession(updated);
     }
 
-    await setSyncState({ ...state, lastSyncTime: Date.now() });
-  } catch {
-    // Backup failure should not break session save
+    await recordSyncSuccess();
+  } catch (err) {
+    // Backup failure should not break session save, but surface it in sync status
+    await recordSyncError(err);
   }
 }
 
@@ -96,17 +119,31 @@ export async function deleteDriveFileIfEnabled(driveFileId: string | null): Prom
   }
 }
 
-export async function registerDriveSync(bus: MessageBus, db: TabzenDB): Promise<void> {
+export function registerDriveSync(
+  bus: MessageBus,
+  db: TabzenDB,
+  ready: Promise<void> = Promise.resolve(),
+): void {
   const api = new DriveAPI(getAuthToken);
 
   bus.register('enableSync', async () => {
     // Request auth token interactively to trigger consent
-    await chrome.identity.getAuthToken({ interactive: true });
-    await setSyncState({ enabled: true, lastSyncTime: null });
+    let result: chrome.identity.GetAuthTokenResult;
+    try {
+      result = await chrome.identity.getAuthToken({ interactive: true });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { ok: false, error: `Google sign-in failed: ${message}` };
+    }
+    if (!result.token) {
+      return { ok: false, error: 'Google sign-in failed: no token granted. Make sure you are signed in to Chrome.' };
+    }
+    await setSyncState({ ...DEFAULT_SYNC_STATE, enabled: true });
     return { ok: true };
   });
 
   bus.register('disableSync', async () => {
+    await ready;
     // Revoke cached token
     try {
       const result = await chrome.identity.getAuthToken({ interactive: false });
@@ -117,7 +154,7 @@ export async function registerDriveSync(bus: MessageBus, db: TabzenDB): Promise<
       // Token might not exist
     }
 
-    await setSyncState({ enabled: false, lastSyncTime: null });
+    await setSyncState({ ...DEFAULT_SYNC_STATE });
 
     // Clear driveFileId from all local sessions
     const sessions = await db.getAllSessions();
@@ -131,6 +168,7 @@ export async function registerDriveSync(bus: MessageBus, db: TabzenDB): Promise<
   });
 
   bus.register('getSyncStatus', async () => {
+    await ready;
     const state = await getSyncState();
     const sessions = await db.getAllSessions();
     const sessionCount = sessions.filter(s => s.driveFileId !== null).length;
@@ -138,11 +176,14 @@ export async function registerDriveSync(bus: MessageBus, db: TabzenDB): Promise<
       enabled: state.enabled,
       lastSyncTime: state.lastSyncTime,
       sessionCount,
+      lastError: state.lastError,
+      lastErrorTime: state.lastErrorTime,
     };
     return { ok: true, data: status };
   });
 
   bus.register('syncSessions', async () => {
+    await ready;
     const state = await getSyncState();
     if (!state.enabled) {
       return { ok: false, error: 'Sync is not enabled' };
@@ -169,11 +210,21 @@ export async function registerDriveSync(bus: MessageBus, db: TabzenDB): Promise<
     }
 
     const now = Date.now();
-    await setSyncState({ ...state, lastSyncTime: now });
-    return { ok: true, data: { synced, lastSyncTime: now } };
+    if (errors.length > 0) {
+      await setSyncState({
+        ...state,
+        lastSyncTime: now,
+        lastError: errors[0],
+        lastErrorTime: now,
+      });
+    } else {
+      await setSyncState({ ...state, lastSyncTime: now, lastError: null, lastErrorTime: null });
+    }
+    return { ok: true, data: { synced, failed: errors.length, lastSyncTime: now } };
   });
 
   bus.register('importFromDrive', async () => {
+    await ready;
     const state = await getSyncState();
     if (!state.enabled) {
       return { ok: false, error: 'Sync is not enabled' };
@@ -205,6 +256,7 @@ export async function registerDriveSync(bus: MessageBus, db: TabzenDB): Promise<
   });
 
   bus.register('backupSession', async (req) => {
+    await ready;
     const state = await getSyncState();
     if (!state.enabled) {
       return { ok: false, error: 'Sync is not enabled' };
@@ -215,15 +267,19 @@ export async function registerDriveSync(bus: MessageBus, db: TabzenDB): Promise<
       return { ok: false, error: `Session "${req.sessionId}" not found` };
     }
 
-    if (session.driveFileId) {
-      await api.updateFile(session.driveFileId, JSON.stringify(session));
-    } else {
-      const driveFile = await api.createFile(sessionFileName(session), JSON.stringify(session));
-      await db.putSession({ ...session, driveFileId: driveFile.id });
+    try {
+      if (session.driveFileId) {
+        await api.updateFile(session.driveFileId, JSON.stringify(session));
+      } else {
+        const driveFile = await api.createFile(sessionFileName(session), JSON.stringify(session));
+        await db.putSession({ ...session, driveFileId: driveFile.id });
+      }
+    } catch (err) {
+      await recordSyncError(err);
+      throw err;
     }
 
-    const now = Date.now();
-    await setSyncState({ ...state, lastSyncTime: now });
+    await recordSyncSuccess();
     return { ok: true };
   });
 }

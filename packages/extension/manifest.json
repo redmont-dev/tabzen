@@ -37,6 +37,10 @@
   "omnibox": {
     "keyword": "tabzen"
   },
+  "oauth2": {
+    "client_id": "REPLACE_WITH_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/drive.appdata"]
+  },
   "commands": {
     "_execute_action": {
       "suggested_key": { "default": "Ctrl+Shift+E", "mac": "Command+Shift+E" },

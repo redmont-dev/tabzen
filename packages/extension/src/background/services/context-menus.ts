@@ -1,5 +1,9 @@
 import type { MessageBus } from '../message-bus';
+import type { GroupingRule, Workspace } from '@/data/types';
 import { extractDomain } from '../utils/rule-matcher';
+import { notify } from '../utils/notify';
+import { SessionStorage } from '@/data/storage';
+import { TAB_GROUP_COLORS, PENDING_SEARCH_KEY } from '@/shared/constants';
 
 const MENU_IDS = {
   MOVE_TO_GROUP: 'tabzen-move-to-group',
@@ -82,29 +86,53 @@ async function handleMenuClick(
     }
 
     case MENU_IDS.CREATE_RULE: {
-      // Extract domain from tab URL and send as a suggestion
-      // The UI will handle showing a dialog to finalize the rule
-      if (tab.url) {
-        const domain = extractDomain(tab.url);
-        if (domain) {
-          // This would typically open the side panel or popup with a pre-filled rule form
-          // For now, we just return the domain info that the UI can use
-          await bus.dispatch({
-            action: 'getActiveWorkspace',
-          });
-        }
+      if (!tab.url) break;
+      const domain = extractDomain(tab.url);
+      if (!domain) break;
+
+      const wsResponse = await bus.dispatch({ action: 'getActiveWorkspace' });
+      if (!wsResponse.ok || !wsResponse.data) {
+        notify('Could not create rule', wsResponse.error ?? 'No active workspace found.');
+        break;
       }
+      const workspace = wsResponse.data as Workspace;
+
+      if (workspace.rules.some(r => r.type === 'domain' && r.pattern === domain)) {
+        notify('Rule already exists', `"${domain}" is already covered by a rule in ${workspace.name}.`);
+        break;
+      }
+
+      const rule: GroupingRule = {
+        id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        type: 'domain',
+        pattern: domain,
+        groupName: domain,
+        color: TAB_GROUP_COLORS[workspace.rules.length % TAB_GROUP_COLORS.length],
+        enabled: true,
+        source: 'user',
+      };
+
+      const updateResponse = await bus.dispatch({
+        action: 'updateWorkspace',
+        workspaceId: workspace.id,
+        updates: { rules: [...workspace.rules, rule] },
+      });
+      if (!updateResponse.ok) {
+        notify('Could not create rule', updateResponse.error ?? 'Unknown error');
+        break;
+      }
+
+      await bus.dispatch({ action: 'applyRules', windowId: tab.windowId });
+      notify('Rule created', `Tabs from ${domain} will be grouped into "${domain}".`);
       break;
     }
 
     case MENU_IDS.FIND_DUPLICATES: {
-      if (tab.url) {
-        await bus.dispatch({
-          action: 'searchTabs',
-          query: tab.url,
-          scope: 'tabs',
-        });
-      }
+      if (!tab.url) break;
+      // Hand the query to the side panel, then open it (the menu click is a
+      // user gesture, which sidePanel.open requires)
+      await SessionStorage.set(PENDING_SEARCH_KEY, tab.url);
+      await chrome.sidePanel.open({ windowId: tab.windowId });
       break;
     }
 

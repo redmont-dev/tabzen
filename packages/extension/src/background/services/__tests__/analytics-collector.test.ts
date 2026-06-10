@@ -146,6 +146,9 @@ describe('AnalyticsCollector', () => {
     });
 
     it('returns empty stats when no data exists', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValue([]);
+      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+
       const result = await bus.dispatch({ action: 'getDashboardStats', range: 'week' });
       expect(result.ok).toBe(true);
 
@@ -154,6 +157,35 @@ describe('AnalyticsCollector', () => {
       expect(stats.peakTabCount).toBe(0);
       expect(stats.duplicatesBlocked).toBe(0);
       expect(stats.topDomains).toEqual([]);
+      expect(stats.groupUsage).toEqual([]);
+    });
+
+    it('rejects an invalid time range', async () => {
+      const result = await bus.dispatch({
+        action: 'getDashboardStats',
+        range: 'bogus' as never,
+      });
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('Invalid time range');
+    });
+
+    it('computes group usage and peak from live state', async () => {
+      vi.mocked(chrome.tabs.query).mockResolvedValue([
+        { id: 1, url: 'https://a.com', windowId: 1, groupId: 10 },
+        { id: 2, url: 'https://b.com', windowId: 1, groupId: 10 },
+        { id: 3, url: 'https://c.com', windowId: 1, groupId: -1 },
+      ] as chrome.tabs.Tab[]);
+      vi.mocked(chrome.tabGroups.query).mockResolvedValue([
+        { id: 10, title: 'Dev', color: 'blue', collapsed: false, windowId: 1 },
+      ] as chrome.tabGroups.TabGroup[]);
+
+      const result = await bus.dispatch({ action: 'getDashboardStats', range: 'week' });
+      expect(result.ok).toBe(true);
+
+      const stats = result.data as DashboardStats;
+      expect(stats.groupUsage).toEqual([{ name: 'Dev', color: 'blue', count: 2 }]);
+      // Live open tabs count toward peak even with no snapshots
+      expect(stats.peakTabCount).toBe(3);
     });
   });
 
@@ -183,6 +215,16 @@ describe('AnalyticsCollector', () => {
       const snapResult = await bus.dispatch({ action: 'takeAnalyticsSnapshot' });
       const snapshot = snapResult.data as AnalyticsSnapshot;
       expect(snapshot.sessionsUsed).toBe(1);
+    });
+
+    it('writes counters through to chrome.storage.local so SW termination cannot lose them', async () => {
+      await bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'duplicatesBlocked', amount: 4 });
+      // Write-through persistence is fire-and-forget; let it settle
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      const { storageLocalData } = await import('../../../../tests/setup');
+      const { PENDING_ANALYTICS_KEY } = await import('@/shared/constants');
+      expect(storageLocalData[PENDING_ANALYTICS_KEY]).toMatchObject({ duplicatesBlocked: 4 });
     });
   });
 

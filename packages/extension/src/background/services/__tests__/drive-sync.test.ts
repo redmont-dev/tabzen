@@ -62,6 +62,25 @@ describe('DriveSync', () => {
       const state = storageLocalData[SYNC_STATE_KEY] as { enabled: boolean };
       expect(state.enabled).toBe(true);
     });
+
+    it('fails with a clear error when no token is granted', async () => {
+      vi.mocked(chrome.identity.getAuthToken).mockResolvedValueOnce({} as chrome.identity.GetAuthTokenResult);
+
+      const result = await bus.dispatch({ action: 'enableSync' });
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('sign-in failed');
+
+      const { storageLocalData } = await import('../../../../tests/setup');
+      expect(storageLocalData[SYNC_STATE_KEY]).toBeUndefined();
+    });
+
+    it('fails with a clear error when auth throws (e.g. missing OAuth client)', async () => {
+      vi.mocked(chrome.identity.getAuthToken).mockRejectedValueOnce(new Error('OAuth2 not granted or revoked.'));
+
+      const result = await bus.dispatch({ action: 'enableSync' });
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('OAuth2 not granted');
+    });
   });
 
   describe('disableSync', () => {
@@ -285,6 +304,49 @@ describe('DriveSync', () => {
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const updated = await db.getSession('auto-backup');
       expect(updated?.driveFileId).toBe('auto-id');
+    });
+
+    it('records the failure in sync state so the UI can surface it', async () => {
+      const { storageLocalData } = await import('../../../../tests/setup');
+      storageLocalData[SYNC_STATE_KEY] = { enabled: true, lastSyncTime: null };
+
+      vi.mocked(chrome.identity.getAuthToken).mockResolvedValue({ token: 'test-token' } as chrome.identity.GetAuthTokenResult);
+
+      const session = createSession({ id: 'fail-backup' });
+      await db.putSession(session);
+
+      mockFetch.mockResolvedValueOnce(mockResponse('quota exceeded', false, 403));
+
+      await backupSessionIfEnabled(db, session);
+
+      const status = await bus.dispatch({ action: 'getSyncStatus' });
+      const data = status.data as SyncStatus;
+      expect(data.lastError).toContain('createFile failed');
+      expect(data.lastErrorTime).toBeGreaterThan(0);
+    });
+
+    it('clears a previous error after a successful backup', async () => {
+      const { storageLocalData } = await import('../../../../tests/setup');
+      storageLocalData[SYNC_STATE_KEY] = {
+        enabled: true,
+        lastSyncTime: null,
+        lastError: 'old error',
+        lastErrorTime: 123,
+      };
+
+      vi.mocked(chrome.identity.getAuthToken).mockResolvedValue({ token: 'test-token' } as chrome.identity.GetAuthTokenResult);
+
+      const session = createSession({ id: 'recover-backup' });
+      await db.putSession(session);
+
+      mockFetch.mockResolvedValueOnce(mockResponse({ id: 'ok-id', name: 'test.json', mimeType: 'application/json' }));
+
+      await backupSessionIfEnabled(db, session);
+
+      const status = await bus.dispatch({ action: 'getSyncStatus' });
+      const data = status.data as SyncStatus;
+      expect(data.lastError).toBeNull();
+      expect(data.lastSyncTime).toBeGreaterThan(0);
     });
   });
 });
