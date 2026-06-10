@@ -30,6 +30,9 @@ jobs:
 
       - run: pnpm install
 
+      - name: Typecheck
+        run: pnpm typecheck
+
       - name: Run unit tests
         run: pnpm test:ext
 

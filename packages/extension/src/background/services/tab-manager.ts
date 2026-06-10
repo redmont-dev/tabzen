@@ -82,7 +82,7 @@ async function sortTabsInGroup(
 
   // Re-group tabs after move (chrome.tabs.move removes tabs from groups)
   if (gId !== undefined && gId !== -1) {
-    const tabIds = sorted.map(t => t.id).filter(Boolean) as number[];
+    const tabIds = sorted.map(t => t.id).filter(Boolean) as [number, ...number[]];
     if (tabIds.length > 0) {
       await chrome.tabs.group({ tabIds, groupId: gId });
     }
@@ -187,7 +187,7 @@ async function sortGroups(windowId: number, mode: GroupSortMode): Promise<void> 
 
   for (const group of sorted) {
     const groupTabs = await chrome.tabs.query({ windowId, groupId: group.id });
-    const tabIds = groupTabs.map(t => t.id).filter(Boolean) as number[];
+    const tabIds = groupTabs.map(t => t.id).filter(Boolean) as [number, ...number[]];
     for (const tab of groupTabs) {
       if (tab.id != null) {
         await chrome.tabs.move(tab.id, { index: targetIndex });

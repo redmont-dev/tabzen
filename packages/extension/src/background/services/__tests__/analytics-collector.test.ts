@@ -30,14 +30,14 @@ describe('AnalyticsCollector', () => {
 
   describe('takeAnalyticsSnapshot', () => {
     it('captures current tab and group counts', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Tab 1', url: 'https://example.com', windowId: 1 },
         { id: 2, title: 'Tab 2', url: 'https://github.com/repo', windowId: 1 },
         { id: 3, title: 'Tab 3', url: 'https://github.com/other', windowId: 1 },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
         { id: 10, title: 'Dev', color: 'blue', collapsed: false, windowId: 1 },
-      ] as chrome.tabGroups.TabGroup[]);
+      ] as chrome.tabGroups.TabGroup[]));
 
       const result = await bus.dispatch({ action: 'takeAnalyticsSnapshot' });
       expect(result.ok).toBe(true);
@@ -50,8 +50,8 @@ describe('AnalyticsCollector', () => {
     });
 
     it('flushes pending counters into snapshot', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       await bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'duplicatesBlocked', amount: 5 });
       await bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'sessionsUsed', amount: 2 });
@@ -76,8 +76,8 @@ describe('AnalyticsCollector', () => {
         url: `https://domain${i}.com/page`,
         windowId: 1,
       }));
-      vi.mocked(chrome.tabs.query).mockResolvedValue(tabs as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => (tabs as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const result = await bus.dispatch({ action: 'takeAnalyticsSnapshot' });
       const snapshot = result.data as AnalyticsSnapshot;
@@ -87,10 +87,10 @@ describe('AnalyticsCollector', () => {
 
   describe('getAnalytics', () => {
     it('returns snapshots within time range', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://example.com', windowId: 1 },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       // Take two snapshots with slight time difference
       await bus.dispatch({ action: 'takeAnalyticsSnapshot' });
@@ -113,25 +113,25 @@ describe('AnalyticsCollector', () => {
 
   describe('getDashboardStats', () => {
     it('aggregates stats for the given time range', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://example.com', windowId: 1 },
         { id: 2, url: 'https://example.com/other', windowId: 1 },
         { id: 3, url: 'https://github.com', windowId: 1 },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       await bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'duplicatesBlocked', amount: 3 });
       await bus.dispatch({ action: 'takeAnalyticsSnapshot' });
 
       await bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'sessionsUsed', amount: 1 });
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://example.com', windowId: 1 },
         { id: 2, url: 'https://example.com/other', windowId: 1 },
         { id: 3, url: 'https://github.com', windowId: 1 },
         { id: 4, url: 'https://google.com', windowId: 1 },
         { id: 5, url: 'https://google.com/maps', windowId: 1 },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
       await new Promise(resolve => setTimeout(resolve, 5));
       await bus.dispatch({ action: 'takeAnalyticsSnapshot' });
 
@@ -146,8 +146,8 @@ describe('AnalyticsCollector', () => {
     });
 
     it('returns empty stats when no data exists', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const result = await bus.dispatch({ action: 'getDashboardStats', range: 'week' });
       expect(result.ok).toBe(true);
@@ -170,14 +170,14 @@ describe('AnalyticsCollector', () => {
     });
 
     it('computes group usage and peak from live state', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://a.com', windowId: 1, groupId: 10 },
         { id: 2, url: 'https://b.com', windowId: 1, groupId: 10 },
         { id: 3, url: 'https://c.com', windowId: 1, groupId: -1 },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
         { id: 10, title: 'Dev', color: 'blue', collapsed: false, windowId: 1 },
-      ] as chrome.tabGroups.TabGroup[]);
+      ] as chrome.tabGroups.TabGroup[]));
 
       const result = await bus.dispatch({ action: 'getDashboardStats', range: 'week' });
       expect(result.ok).toBe(true);
@@ -198,8 +198,8 @@ describe('AnalyticsCollector', () => {
       });
       expect(result.ok).toBe(true);
 
-      vi.mocked(chrome.tabs.query).mockResolvedValue([]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const snapResult = await bus.dispatch({ action: 'takeAnalyticsSnapshot' });
       const snapshot = snapResult.data as AnalyticsSnapshot;
@@ -209,8 +209,8 @@ describe('AnalyticsCollector', () => {
     it('defaults amount to 1', async () => {
       await bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'sessionsUsed' });
 
-      vi.mocked(chrome.tabs.query).mockResolvedValue([]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const snapResult = await bus.dispatch({ action: 'takeAnalyticsSnapshot' });
       const snapshot = snapResult.data as AnalyticsSnapshot;

@@ -82,10 +82,11 @@ describe('ContextMenus', () => {
       discarded: false,
       autoDiscardable: true,
       groupId: -1,
+      frozen: false,
     };
 
     it('moves tab to a new group when "New group" is clicked', async () => {
-      vi.mocked(chrome.tabs.group).mockResolvedValue(42);
+      vi.mocked(chrome.tabs.group).mockImplementation(async () => (42));
 
       await handleMenuClick(
         bus,
@@ -114,7 +115,7 @@ describe('ContextMenus', () => {
     });
 
     it('dispatches removeDuplicates when "Close duplicates" is clicked', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([]);
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([]));
 
       await handleMenuClick(
         bus,

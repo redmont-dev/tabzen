@@ -44,13 +44,13 @@ describe('SessionManager', () => {
 
   describe('saveSession', () => {
     it('saves current window tabs as a session', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Tab 1', url: 'https://example.com', index: 0, windowId: 1, groupId: -1, pinned: false },
         { id: 2, title: 'Tab 2', url: 'https://other.com', index: 1, windowId: 1, groupId: 10, pinned: true },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
         { id: 10, title: 'Work', color: 'blue', collapsed: false, windowId: 1 },
-      ] as chrome.tabGroups.TabGroup[]);
+      ] as chrome.tabGroups.TabGroup[]));
 
       const result = await bus.dispatch({ action: 'saveSession', windowId: 1, name: 'My Session' });
       expect(result.ok).toBe(true);
@@ -66,14 +66,14 @@ describe('SessionManager', () => {
     });
 
     it('filters out non-restorable URLs', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Normal', url: 'https://example.com', index: 0, windowId: 1, groupId: -1, pinned: false },
         { id: 2, title: 'Chrome Settings', url: 'chrome://settings', index: 1, windowId: 1, groupId: -1, pinned: false },
         { id: 3, title: 'Extension', url: 'chrome-extension://abc/page.html', index: 2, windowId: 1, groupId: -1, pinned: false },
         { id: 4, title: 'About', url: 'about:blank', index: 3, windowId: 1, groupId: -1, pinned: false },
         { id: 5, title: 'Edge', url: 'edge://settings', index: 4, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const result = await bus.dispatch({ action: 'saveSession', windowId: 1 });
       const session = result.data as Session;
@@ -82,10 +82,10 @@ describe('SessionManager', () => {
     });
 
     it('generates a default name with timestamp when none provided', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Tab 1', url: 'https://example.com', index: 0, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const result = await bus.dispatch({ action: 'saveSession', windowId: 1 });
       const session = result.data as Session;
@@ -93,10 +93,10 @@ describe('SessionManager', () => {
     });
 
     it('saves with custom source label', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Tab 1', url: 'https://example.com', index: 0, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const result = await bus.dispatch({ action: 'saveSession', windowId: 1, source: 'auto' });
       const session = result.data as Session;
@@ -106,10 +106,10 @@ describe('SessionManager', () => {
 
   describe('getSessions', () => {
     it('returns all saved sessions', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Tab 1', url: 'https://example.com', index: 0, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       await bus.dispatch({ action: 'saveSession', windowId: 1, name: 'Session A' });
       await bus.dispatch({ action: 'saveSession', windowId: 1, name: 'Session B' });
@@ -123,10 +123,10 @@ describe('SessionManager', () => {
 
   describe('getSession', () => {
     it('returns a specific session by ID', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Tab', url: 'https://example.com', index: 0, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const saveResult = await bus.dispatch({ action: 'saveSession', windowId: 1, name: 'Test' });
       const saved = saveResult.data as Session;
@@ -145,23 +145,23 @@ describe('SessionManager', () => {
 
   describe('restoreSession', () => {
     it('creates a new window with session tabs', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Tab 1', url: 'https://a.com', index: 0, windowId: 1, groupId: -1, pinned: false },
         { id: 2, title: 'Tab 2', url: 'https://b.com', index: 1, windowId: 1, groupId: 10, pinned: true },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
         { id: 10, title: 'Work', color: 'blue', collapsed: false, windowId: 1 },
-      ] as chrome.tabGroups.TabGroup[]);
+      ] as chrome.tabGroups.TabGroup[]));
 
       const saveResult = await bus.dispatch({ action: 'saveSession', windowId: 1, name: 'Test' });
       const session = saveResult.data as Session;
 
-      vi.mocked(chrome.windows.create).mockResolvedValue({ id: 2 } as chrome.windows.Window);
+      vi.mocked(chrome.windows.create).mockImplementation(async () => ({ id: 2 } as chrome.windows.Window));
       vi.mocked(chrome.tabs.create).mockImplementation(async (props) => ({
         id: Math.floor(Math.random() * 1000),
         ...props,
       } as chrome.tabs.Tab));
-      vi.mocked(chrome.tabs.group).mockResolvedValue(20);
+      vi.mocked(chrome.tabs.group).mockImplementation(async () => (20));
 
       const result = await bus.dispatch({ action: 'restoreSession', sessionId: session.id });
       expect(result.ok).toBe(true);
@@ -181,12 +181,12 @@ describe('SessionManager', () => {
 
   describe('restoreSessionTabs', () => {
     it('opens specific tabs from a session in the current window', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Tab A', url: 'https://a.com', index: 0, windowId: 1, groupId: -1, pinned: false },
         { id: 2, title: 'Tab B', url: 'https://b.com', index: 1, windowId: 1, groupId: -1, pinned: false },
         { id: 3, title: 'Tab C', url: 'https://c.com', index: 2, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const saveResult = await bus.dispatch({ action: 'saveSession', windowId: 1, name: 'Multi' });
       const session = saveResult.data as Session;
@@ -227,10 +227,10 @@ describe('SessionManager', () => {
 
   describe('deleteSession', () => {
     it('deletes a session', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Tab', url: 'https://example.com', index: 0, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const saveResult = await bus.dispatch({ action: 'saveSession', windowId: 1, name: 'ToDelete' });
       const session = saveResult.data as Session;
@@ -245,10 +245,10 @@ describe('SessionManager', () => {
 
   describe('renameSession', () => {
     it('renames a session', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Tab', url: 'https://example.com', index: 0, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const saveResult = await bus.dispatch({ action: 'saveSession', windowId: 1, name: 'Old Name' });
       const session = saveResult.data as Session;
@@ -409,15 +409,15 @@ describe('SessionManager', () => {
       const updatedCalls = vi.mocked(chrome.tabs.onUpdated.addListener).mock.calls;
       const listener = updatedCalls[updatedCalls.length - 1][0] as (
         tabId: number,
-        changeInfo: chrome.tabs.TabChangeInfo,
+        changeInfo: chrome.tabs.OnUpdatedInfo,
         tab: chrome.tabs.Tab,
       ) => void;
 
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'A', url: 'https://a.com', windowId: 3, groupId: -1, pinned: false },
         { id: 2, title: 'B', url: 'https://b.com', windowId: 3, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       vi.useFakeTimers();
       try {
@@ -438,12 +438,12 @@ describe('SessionManager', () => {
 
   describe('URL filtering', () => {
     it('saves tabs with valid URLs only', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Good', url: 'https://good.com', index: 0, windowId: 1, groupId: -1, pinned: false },
         { id: 2, title: 'New Tab', url: 'chrome://newtab/', index: 1, windowId: 1, groupId: -1, pinned: false },
         { id: 3, title: 'Also Good', url: 'http://also-good.com', index: 2, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const result = await bus.dispatch({ action: 'saveSession', windowId: 1 });
       const session = result.data as Session;

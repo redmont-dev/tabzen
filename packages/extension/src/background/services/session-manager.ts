@@ -171,7 +171,7 @@ async function restoreSession(db: TabzenDB, sessionId: string): Promise<void> {
       });
       await chrome.tabGroups.update(newGroupId, {
         title: sessionGroup.title,
-        color: sessionGroup.color as chrome.tabGroups.ColorEnum,
+        color: sessionGroup.color,
         collapsed: sessionGroup.collapsed,
       });
     } catch (err) {

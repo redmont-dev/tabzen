@@ -19,7 +19,7 @@ const recentAutoGroups = new Map<number, { url: string; time: number }>();
 
 interface GroupTarget {
   groupName: string;
-  color: string;
+  color: TabGroupColor;
   tabIds: number[];
 }
 
@@ -81,19 +81,21 @@ async function applyRules(windowId: number): Promise<void> {
       g => g.title === target.groupName && g.color === target.color
     );
 
+    const tabIds = target.tabIds as [number, ...number[]];
+
     if (existingGroup) {
       await chrome.tabs.group({
-        tabIds: target.tabIds,
+        tabIds,
         groupId: existingGroup.id,
       });
     } else {
       const groupId = await chrome.tabs.group({
-        tabIds: target.tabIds,
+        tabIds,
         createProperties: { windowId },
       });
       await chrome.tabGroups.update(groupId, {
         title: target.groupName,
-        color: target.color as chrome.tabGroups.ColorEnum,
+        color: target.color,
       });
     }
   }
@@ -139,7 +141,7 @@ async function autoGroupTab(tab: chrome.tabs.Tab): Promise<void> {
     });
     await chrome.tabGroups.update(groupId, {
       title: matchedRule.groupName,
-      color: matchedRule.color as chrome.tabGroups.ColorEnum,
+      color: matchedRule.color,
     });
   }
 }
@@ -211,7 +213,7 @@ export function registerRuleEngine(bus: MessageBus): void {
 
   // Auto-group tabs when their URL changes
   chrome.tabs.onUpdated.addListener(
-    (tabId: number, changeInfo: chrome.tabs.TabChangeInfo, tab: chrome.tabs.Tab) => {
+    (tabId: number, changeInfo: chrome.tabs.OnUpdatedInfo, tab: chrome.tabs.Tab) => {
       if (changeInfo.url) {
         const now = Date.now();
         const recent = recentAutoGroups.get(tabId);
