@@ -336,6 +336,35 @@ describe('SessionManager', () => {
       expect(chrome.alarms.clear).toHaveBeenCalledWith(AUTO_SAVE_ALARM_NAME);
       expect(chrome.alarms.create).not.toHaveBeenCalled();
     });
+
+    it('does not reset the alarm countdown on a plain service-worker restart', async () => {
+      const { storageSyncData } = await import('../../../../tests/setup');
+      storageSyncData[STORAGE_KEYS.SETTINGS] = { ...DEFAULT_SETTINGS, autoSaveSchedule: 'hourly' };
+
+      // First SW start creates the alarm
+      await registerFreshManager();
+      expect(chrome.alarms.create).toHaveBeenCalledTimes(1);
+      vi.mocked(chrome.alarms.create).mockClear();
+
+      // A later SW restart must leave the existing alarm's countdown intact —
+      // re-creating it would push the fire time back to a fresh 60 minutes,
+      // so the hourly save would never actually fire.
+      await registerFreshManager();
+      expect(chrome.alarms.create).not.toHaveBeenCalled();
+    });
+
+    it('reschedules the alarm when the user changes the schedule', async () => {
+      const { storageSyncData } = await import('../../../../tests/setup');
+      storageSyncData[STORAGE_KEYS.SETTINGS] = { ...DEFAULT_SETTINGS, autoSaveSchedule: 'hourly' };
+
+      const freshBus = await registerFreshManager();
+      vi.mocked(chrome.alarms.create).mockClear();
+
+      // Explicit settings-change path forces a fresh schedule even though the
+      // alarm already exists.
+      await freshBus.dispatch({ action: 'configureAutoSave' });
+      expect(chrome.alarms.create).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('save-on-close', () => {

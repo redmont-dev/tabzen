@@ -229,9 +229,9 @@ describe('AnalyticsCollector', () => {
   });
 
   describe('alarm setup', () => {
-    it('creates a periodic alarm for snapshots on registration', async () => {
-      // registerAnalyticsCollector was called in beforeEach
-      // Check that alarms.create was called (it happens during registration)
+    it('creates a periodic alarm for snapshots on first registration', async () => {
+      // Alarm creation is deferred behind a chrome.alarms.get existence check
+      await new Promise(resolve => setTimeout(resolve, 0));
       expect(chrome.alarms.create).toHaveBeenCalledWith(
         'tabzen-analytics-snapshot',
         expect.objectContaining({
@@ -239,6 +239,20 @@ describe('AnalyticsCollector', () => {
           delayInMinutes: 30,
         }),
       );
+    });
+
+    it('does not re-create the snapshot alarm when one already exists', async () => {
+      await new Promise(resolve => setTimeout(resolve, 0)); // let beforeEach registration settle
+      vi.mocked(chrome.alarms.create).mockClear();
+
+      // Simulate a service-worker restart: a second collector registers while
+      // the alarm from the first still exists.
+      const db2 = new TabzenDB(`test-${Math.random().toString(36).slice(2, 10)}`);
+      await db2.open();
+      registerAnalyticsCollector(new MessageBus(), db2);
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      expect(chrome.alarms.create).not.toHaveBeenCalled();
     });
   });
 });

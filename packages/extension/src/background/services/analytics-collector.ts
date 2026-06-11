@@ -232,10 +232,16 @@ export function registerAnalyticsCollector(bus: MessageBus, existingDb?: TabzenD
     incrementCounter('tabsOpened');
   });
 
-  // Set up periodic snapshot alarm
-  chrome.alarms.create(ANALYTICS_ALARM_NAME, {
-    periodInMinutes: ANALYTICS_SNAPSHOT_INTERVAL,
-    delayInMinutes: ANALYTICS_SNAPSHOT_INTERVAL,
+  // Set up the periodic snapshot alarm — but only if it doesn't already exist.
+  // chrome.alarms.create resets the countdown, and MV3 restarts the worker
+  // constantly; re-creating on every start would keep pushing the snapshot back.
+  void chrome.alarms.get(ANALYTICS_ALARM_NAME).then(existing => {
+    if (!existing) {
+      chrome.alarms.create(ANALYTICS_ALARM_NAME, {
+        periodInMinutes: ANALYTICS_SNAPSHOT_INTERVAL,
+        delayInMinutes: ANALYTICS_SNAPSHOT_INTERVAL,
+      });
+    }
   });
 
   chrome.alarms.onAlarm.addListener(async (alarm: chrome.alarms.Alarm) => {

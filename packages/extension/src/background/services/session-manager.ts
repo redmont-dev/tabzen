@@ -201,11 +201,20 @@ async function restoreSessionTabs(
   }
 }
 
-async function configureAutoSave(db: TabzenDB): Promise<void> {
+// `force` reschedules even if the alarm already exists (the user changed the
+// setting). Without it, a plain service-worker restart must NOT re-create the
+// alarm: chrome.alarms.create resets the countdown, and MV3 restarts the worker
+// constantly, so re-creating every start would push the fire time back forever
+// and the scheduled save would never run.
+async function configureAutoSave(_db: TabzenDB, force = false): Promise<void> {
   const settings = await getSettings();
 
   if (settings.autoSaveSchedule === 'disabled') {
     await chrome.alarms.clear(AUTO_SAVE_ALARM_NAME);
+    return;
+  }
+
+  if (!force && (await chrome.alarms.get(AUTO_SAVE_ALARM_NAME))) {
     return;
   }
 
@@ -286,8 +295,8 @@ async function snapshotAllWindows(): Promise<void> {
 // Reconcile all background auto-save state with the current settings: the
 // scheduled alarm and the per-window close snapshots. Runs on every
 // service-worker start and whenever auto-save settings change.
-async function reconcileAutoSaveState(db: TabzenDB): Promise<void> {
-  await configureAutoSave(db);
+async function reconcileAutoSaveState(db: TabzenDB, force = false): Promise<void> {
+  await configureAutoSave(db, force);
   await snapshotAllWindows();
 }
 
@@ -382,7 +391,8 @@ export function registerSessionManager(bus: MessageBus, existingDb?: TabzenDB): 
 
   bus.register('configureAutoSave', async () => {
     await ready;
-    await reconcileAutoSaveState(db);
+    // Triggered by a settings change — force a fresh schedule.
+    await reconcileAutoSaveState(db, true);
     return { ok: true };
   });
 

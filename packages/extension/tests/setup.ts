@@ -1,8 +1,9 @@
-import { vi } from 'vitest';
+import { vi, beforeEach } from 'vitest';
 
 const storageSyncData: Record<string, unknown> = {};
 const storageLocalData: Record<string, unknown> = {};
 const storageSessionData: Record<string, unknown> = {};
+const alarmStore = new Map<string, Record<string, unknown>>();
 
 const createStorageArea = (data: Record<string, unknown>) => ({
   get: vi.fn(async (keys?: string | string[] | Record<string, unknown>) => {
@@ -82,9 +83,14 @@ const chrome = {
     onRemoved: { addListener: vi.fn(), removeListener: vi.fn() },
   },
   alarms: {
-    create: vi.fn(),
-    clear: vi.fn(async () => true),
-    get: vi.fn(async () => null),
+    // Stateful so create/get/clear behave like the real persistent alarm store,
+    // which is what the "don't reset the countdown on restart" logic depends on.
+    create: vi.fn((name: string, info: Record<string, unknown>) => {
+      alarmStore.set(name, { name, ...info });
+    }),
+    clear: vi.fn(async (name: string) => alarmStore.delete(name)),
+    get: vi.fn(async (name: string) => alarmStore.get(name) ?? null),
+    getAll: vi.fn(async () => [...alarmStore.values()]),
     onAlarm: { addListener: vi.fn(), removeListener: vi.fn() },
   },
   notifications: {
@@ -116,5 +122,9 @@ const chrome = {
 };
 
 Object.assign(globalThis, { chrome });
+
+// Reset the persistent alarm store between tests (vi.clearAllMocks only resets
+// call history, not the backing Map).
+beforeEach(() => { alarmStore.clear(); });
 
 export { storageSyncData, storageLocalData, storageSessionData };
