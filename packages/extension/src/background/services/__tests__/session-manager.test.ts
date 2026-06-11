@@ -367,6 +367,37 @@ describe('SessionManager', () => {
       expect(chrome.notifications.create).toHaveBeenCalled();
     });
 
+    it('snapshots already-open windows when save-on-close is configured, so an immediate close still saves', async () => {
+      const { storageSyncData, storageSessionData } = await import('../../../../tests/setup');
+      storageSyncData[STORAGE_KEYS.SETTINGS] = { ...DEFAULT_SETTINGS, autoSaveOnClose: true };
+
+      // No snapshot pre-seeded: the window's tabs loaded before the toggle was
+      // enabled, so no tab event has fired since.
+      vi.mocked(chrome.windows.getAll).mockImplementation(async () => ([{ id: 12 }] as chrome.windows.Window[]));
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
+        { id: 1, title: 'A', url: 'https://a.com', windowId: 12, groupId: -1, pinned: false },
+        { id: 2, title: 'B', url: 'https://b.com', windowId: 12, groupId: -1, pinned: false },
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
+
+      const freshBus = await registerFreshManager();
+      // The updateSettings -> configureAutoSave path that runs when the toggle flips on
+      await freshBus.dispatch({ action: 'configureAutoSave' });
+
+      expect(storageSessionData[`${WINDOW_SNAPSHOT_PREFIX}12`]).toMatchObject({
+        tabs: [
+          expect.objectContaining({ url: 'https://a.com' }),
+          expect.objectContaining({ url: 'https://b.com' }),
+        ],
+      });
+
+      await lastWindowRemovedListener()(12);
+      const result = await freshBus.dispatch({ action: 'getSessions' });
+      const sessions = result.data as Session[];
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].source).toBe('close');
+    });
+
     it('skips single-tab windows', async () => {
       const { storageSyncData, storageSessionData } = await import('../../../../tests/setup');
       storageSyncData[STORAGE_KEYS.SETTINGS] = { ...DEFAULT_SETTINGS, autoSaveOnClose: true };

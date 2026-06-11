@@ -47,8 +47,12 @@ bus.register('updateSettings', async (req) => {
   const merged = { ...current, ...req.settings };
   await SyncStorage.set(STORAGE_KEYS.SETTINGS, merged);
 
-  // Reschedule the auto-save alarm whenever its settings change
-  if ('autoSaveSchedule' in req.settings || 'autoSaveDailyTime' in req.settings) {
+  // Reconcile auto-save (alarm + close snapshots) whenever its settings change
+  if (
+    'autoSaveSchedule' in req.settings ||
+    'autoSaveDailyTime' in req.settings ||
+    'autoSaveOnClose' in req.settings
+  ) {
     const response = await bus.dispatch({ action: 'configureAutoSave' });
     if (!response.ok) console.warn('Failed to reconfigure auto-save:', response.error);
   }

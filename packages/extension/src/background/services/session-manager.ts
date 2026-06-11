@@ -267,6 +267,30 @@ function scheduleWindowSnapshot(windowId: number): void {
   }, SNAPSHOT_DEBOUNCE_MS));
 }
 
+// Cache a snapshot of every currently-open window. Without this, save-on-close
+// only works for windows that emit a tab event *after* the feature is enabled —
+// so enabling the toggle and immediately closing a window would save nothing.
+async function snapshotAllWindows(): Promise<void> {
+  const settings = await getSettings();
+  if (!settings.autoSaveOnClose) return;
+  const windows = await chrome.windows.getAll();
+  for (const w of windows) {
+    if (w.id === undefined) continue;
+    const snapshot = await captureWindowSnapshot(w.id);
+    if (snapshot.tabs.length > 0) {
+      await SessionStorage.set(snapshotKey(w.id), snapshot);
+    }
+  }
+}
+
+// Reconcile all background auto-save state with the current settings: the
+// scheduled alarm and the per-window close snapshots. Runs on every
+// service-worker start and whenever auto-save settings change.
+async function reconcileAutoSaveState(db: TabzenDB): Promise<void> {
+  await configureAutoSave(db);
+  await snapshotAllWindows();
+}
+
 async function saveClosedWindowSession(db: TabzenDB, windowId: number): Promise<void> {
   const settings = await getSettings();
   const snapshot = await SessionStorage.get<WindowSnapshot | null>(snapshotKey(windowId), null);
@@ -288,9 +312,10 @@ export function registerSessionManager(bus: MessageBus, existingDb?: TabzenDB): 
   const db = existingDb ?? new TabzenDB();
   const ready: Promise<void> = existingDb ? Promise.resolve() : db.open();
 
-  // Schedule the auto-save alarm from persisted settings on every SW start
+  // Reconcile the auto-save alarm and close-snapshots from persisted settings
+  // on every SW start.
   ready
-    .then(() => configureAutoSave(db))
+    .then(() => reconcileAutoSaveState(db))
     .catch(err => console.error('SessionManager init failed:', err));
 
   bus.register('saveSession', async (req) => {
@@ -357,7 +382,7 @@ export function registerSessionManager(bus: MessageBus, existingDb?: TabzenDB): 
 
   bus.register('configureAutoSave', async () => {
     await ready;
-    await configureAutoSave(db);
+    await reconcileAutoSaveState(db);
     return { ok: true };
   });
 
