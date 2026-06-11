@@ -14,6 +14,17 @@ export function extractDomain(url: string): string | null {
 }
 
 /**
+ * Normalize a domain rule pattern. Users sometimes paste a full URL into the
+ * pattern field — peel that down to the hostname so the rule still matches.
+ * Wildcard patterns and bare hostnames are returned unchanged.
+ */
+export function normalizeDomainPattern(pattern: string): string {
+  if (pattern.startsWith('*.')) return pattern;
+  const host = extractDomain(pattern);
+  return host ?? pattern;
+}
+
+/**
  * Test whether a single rule matches the given URL.
  */
 export function matchRule(url: string, rule: GroupingRule): boolean {
@@ -26,7 +37,7 @@ export function matchRule(url: string, rule: GroupingRule): boolean {
     case 'domain': {
       const hostname = extractDomain(url);
       if (!hostname) return false;
-      const pattern = rule.pattern;
+      const pattern = normalizeDomainPattern(rule.pattern);
 
       if (pattern.startsWith('*.')) {
         // Wildcard domain: match the base domain and any subdomain

@@ -12,6 +12,7 @@ import { initPortManager } from './ports';
 import { SyncStorage } from '@/data/storage';
 import { DEFAULT_SETTINGS, STORAGE_KEYS } from '@/shared/constants';
 import { normalizeUrl } from './utils/url-normalize';
+import type { TabSearchResult } from './services/search-index';
 import type { Settings } from '@/data/types';
 
 const bus = new MessageBus();
@@ -22,21 +23,16 @@ registerTabManager(bus, applyRules);
 registerWorkspaceManager(bus, applyRules);
 registerSearchIndex(bus);
 
-// AnalyticsCollector is async (opens IndexedDB), so we initialize it separately
-registerAnalyticsCollector(bus).catch(err => {
-  console.error('Failed to initialize AnalyticsCollector:', err);
-});
+// Handlers register synchronously and await DB readiness internally, so no
+// message arriving early can hit a missing handler.
+registerAnalyticsCollector(bus);
 
 registerContextMenus(bus);
 registerRulePacks(bus);
 
-// SessionManager is async (opens IndexedDB), so we initialize it separately
-// DriveSync shares the same DB instance
-registerSessionManager(bus).then(db => {
-  return registerDriveSync(bus, db);
-}).catch(err => {
-  console.error('Failed to initialize SessionManager/DriveSync:', err);
-});
+// DriveSync shares the SessionManager's DB instance
+const sessionManager = registerSessionManager(bus);
+registerDriveSync(bus, sessionManager.db, sessionManager.ready);
 
 bus.listen();
 bus.register('ping', async () => ({ ok: true, data: 'pong' }));
@@ -50,6 +46,17 @@ bus.register('updateSettings', async (req) => {
   const current = await SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
   const merged = { ...current, ...req.settings };
   await SyncStorage.set(STORAGE_KEYS.SETTINGS, merged);
+
+  // Reconcile auto-save (alarm + close snapshots) whenever its settings change
+  if (
+    'autoSaveSchedule' in req.settings ||
+    'autoSaveDailyTime' in req.settings ||
+    'autoSaveOnClose' in req.settings
+  ) {
+    const response = await bus.dispatch({ action: 'configureAutoSave' });
+    if (!response.ok) console.warn('Failed to reconfigure auto-save:', response.error);
+  }
+
   return { ok: true, data: merged };
 });
 
@@ -63,13 +70,7 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
   const response = await bus.dispatch({ action: 'searchTabs', query: text, scope: 'tabs' });
   if (!response.ok || !response.data) return;
 
-  const results = response.data as Array<{
-    tabId: number;
-    title: string;
-    url: string;
-    groupName: string | null;
-    groupColor: string | null;
-  }>;
+  const results = (response.data as TabSearchResult[]).filter(r => r.kind === 'tab');
 
   const suggestions = results.slice(0, 6).map(r => ({
     content: String(r.tabId),
@@ -96,7 +97,8 @@ chrome.omnibox.onInputEntered.addListener(async (text, disposition) => {
     // User pressed Enter on raw text — search and switch to best match
     const response = await bus.dispatch({ action: 'searchTabs', query: text, scope: 'tabs' });
     if (response.ok && response.data && Array.isArray(response.data) && response.data.length > 0) {
-      const best = (response.data as Array<{ tabId: number; windowId: number }>)[0];
+      const best = (response.data as TabSearchResult[]).filter(r => r.kind === 'tab')[0];
+      if (!best) return;
       try {
         await chrome.tabs.update(best.tabId, { active: true });
         await chrome.windows.update(best.windowId, { focused: true });
@@ -109,7 +111,7 @@ chrome.omnibox.onInputEntered.addListener(async (text, disposition) => {
 
 // Global keyboard commands
 chrome.commands.onCommand.addListener(async (command) => {
-  const window = await chrome.windows.getCurrent();
+  const window = await chrome.windows.getLastFocused();
   if (!window.id) return;
 
   switch (command) {
@@ -117,9 +119,9 @@ chrome.commands.onCommand.addListener(async (command) => {
       await bus.dispatch({ action: 'cleanUp', windowId: window.id });
       break;
     case 'search':
-      // Open the side panel so search is visible
-      await chrome.sidePanel.setOptions({ enabled: true });
-      // The side panel will auto-focus the search bar on open
+      // Commands count as a user gesture, so the panel can be opened directly.
+      // The side panel auto-focuses its search bar on mount.
+      await chrome.sidePanel.open({ windowId: window.id });
       break;
     case 'save-session':
       await bus.dispatch({ action: 'saveSession', windowId: window.id });
@@ -189,13 +191,26 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     });
 
     if (normalizedNew === normalizedExisting) {
-      // Duplicate found — close the new tab and switch to the existing one
+      // Duplicate found — replace the original with the newly loaded tab.
+      // If the original was pinned, fall back to keeping it (don't kill pinned).
       try {
-        await chrome.tabs.remove(tabId);
-        await chrome.tabs.update(existing.id, { active: true });
+        if (existing.pinned) {
+          await chrome.tabs.remove(tabId);
+          await chrome.tabs.update(existing.id, { active: true });
+        } else {
+          const targetGroupId = existing.groupId;
+          await chrome.tabs.remove(existing.id);
+          // Preserve grouping: move the new tab into the original's group.
+          if (tab.id != null && targetGroupId != null && targetGroupId !== -1) {
+            try {
+              await chrome.tabs.group({ tabIds: tab.id, groupId: targetGroupId });
+            } catch {
+              // Group may have been removed when the last member was closed
+            }
+          }
+        }
 
-        // Increment analytics counter
-        bus.dispatch({ action: 'incrementAnalyticsCounter', counter: 'duplicatesBlocked' }).catch(err => console.warn('Analytics increment failed:', err));
+        bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'duplicatesBlocked' }).catch(err => console.warn('Analytics increment failed:', err));
       } catch {
         // Tab may have already been closed
       }

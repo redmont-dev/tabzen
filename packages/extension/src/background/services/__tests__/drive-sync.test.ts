@@ -44,7 +44,7 @@ describe('DriveSync', () => {
 
     vi.clearAllMocks();
     mockFetch = vi.fn();
-    globalThis.fetch = mockFetch;
+    vi.stubGlobal('fetch', mockFetch);
 
     // Reset storage
     const { storageLocalData } = await import('../../../../tests/setup');
@@ -62,6 +62,25 @@ describe('DriveSync', () => {
       const state = storageLocalData[SYNC_STATE_KEY] as { enabled: boolean };
       expect(state.enabled).toBe(true);
     });
+
+    it('fails with a clear error when no token is granted', async () => {
+      vi.mocked(chrome.identity.getAuthToken).mockImplementationOnce(async () => ({} as chrome.identity.GetAuthTokenResult));
+
+      const result = await bus.dispatch({ action: 'enableSync' });
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('sign-in failed');
+
+      const { storageLocalData } = await import('../../../../tests/setup');
+      expect(storageLocalData[SYNC_STATE_KEY]).toBeUndefined();
+    });
+
+    it('fails with a clear error when auth throws (e.g. missing OAuth client)', async () => {
+      vi.mocked(chrome.identity.getAuthToken).mockImplementationOnce(async () => { throw new Error('OAuth2 not granted or revoked.'); });
+
+      const result = await bus.dispatch({ action: 'enableSync' });
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain('OAuth2 not granted');
+    });
   });
 
   describe('disableSync', () => {
@@ -74,7 +93,7 @@ describe('DriveSync', () => {
       await db.putSession(session);
 
       // Mock getAuthToken for non-interactive call during disable
-      vi.mocked(chrome.identity.getAuthToken).mockResolvedValue({ token: 'cached-token' } as chrome.identity.GetAuthTokenResult);
+      vi.mocked(chrome.identity.getAuthToken).mockImplementation(async () => ({ token: 'cached-token' } as chrome.identity.GetAuthTokenResult));
 
       const result = await bus.dispatch({ action: 'disableSync' });
       expect(result.ok).toBe(true);
@@ -132,7 +151,7 @@ describe('DriveSync', () => {
       const { storageLocalData } = await import('../../../../tests/setup');
       storageLocalData[SYNC_STATE_KEY] = { enabled: true, lastSyncTime: null };
 
-      vi.mocked(chrome.identity.getAuthToken).mockResolvedValue({ token: 'test-token' } as chrome.identity.GetAuthTokenResult);
+      vi.mocked(chrome.identity.getAuthToken).mockImplementation(async () => ({ token: 'test-token' } as chrome.identity.GetAuthTokenResult));
 
       const s1 = createSession({ id: 'sess-1' });
       const s2 = createSession({ id: 'sess-2', driveFileId: 'existing-drive-id' });
@@ -141,8 +160,8 @@ describe('DriveSync', () => {
 
       // Mock: createFile for s1, updateFile for s2
       mockFetch
-        .mockResolvedValueOnce(mockResponse({ id: 'new-drive-id', name: 'test.json', mimeType: 'application/json' })) // create
-        .mockResolvedValueOnce(mockResponse({ id: 'existing-drive-id', name: 'test.json', mimeType: 'application/json' })); // update
+        .mockImplementationOnce(async () => (mockResponse({ id: 'new-drive-id', name: 'test.json', mimeType: 'application/json' }))) // create
+        .mockImplementationOnce(async () => (mockResponse({ id: 'existing-drive-id', name: 'test.json', mimeType: 'application/json' }))); // update
 
       const result = await bus.dispatch({ action: 'syncSessions' });
       expect(result.ok).toBe(true);
@@ -169,7 +188,7 @@ describe('DriveSync', () => {
       const { storageLocalData } = await import('../../../../tests/setup');
       storageLocalData[SYNC_STATE_KEY] = { enabled: true, lastSyncTime: null };
 
-      vi.mocked(chrome.identity.getAuthToken).mockResolvedValue({ token: 'test-token' } as chrome.identity.GetAuthTokenResult);
+      vi.mocked(chrome.identity.getAuthToken).mockImplementation(async () => ({ token: 'test-token' } as chrome.identity.GetAuthTokenResult));
 
       // Existing local session
       const existingSession = createSession({ id: 'existing-id' });
@@ -179,17 +198,17 @@ describe('DriveSync', () => {
 
       // Mock listFiles
       mockFetch
-        .mockResolvedValueOnce(mockResponse({
+        .mockImplementationOnce(async () => (mockResponse({
           files: [
             { id: 'df1', name: 'tabzen-session-existing-id.json', mimeType: 'application/json' },
             { id: 'df2', name: 'tabzen-session-remote-id.json', mimeType: 'application/json' },
             { id: 'df3', name: 'other-file.txt', mimeType: 'text/plain' }, // should be skipped
           ],
-        }))
+        })))
         // readFile for existing session (will be skipped by ID)
-        .mockResolvedValueOnce(mockResponse(JSON.stringify({ ...existingSession })))
+        .mockImplementationOnce(async () => (mockResponse(JSON.stringify({ ...existingSession }))))
         // readFile for remote session
-        .mockResolvedValueOnce(mockResponse(JSON.stringify(remoteSession)));
+        .mockImplementationOnce(async () => (mockResponse(JSON.stringify(remoteSession))));
 
       const result = await bus.dispatch({ action: 'importFromDrive' });
       expect(result.ok).toBe(true);
@@ -226,12 +245,12 @@ describe('DriveSync', () => {
       const { storageLocalData } = await import('../../../../tests/setup');
       storageLocalData[SYNC_STATE_KEY] = { enabled: true, lastSyncTime: null };
 
-      vi.mocked(chrome.identity.getAuthToken).mockResolvedValue({ token: 'test-token' } as chrome.identity.GetAuthTokenResult);
+      vi.mocked(chrome.identity.getAuthToken).mockImplementation(async () => ({ token: 'test-token' } as chrome.identity.GetAuthTokenResult));
 
       const session = createSession({ id: 'sess-new' });
       await db.putSession(session);
 
-      mockFetch.mockResolvedValueOnce(mockResponse({ id: 'created-id', name: 'test.json', mimeType: 'application/json' }));
+      mockFetch.mockImplementationOnce(async () => (mockResponse({ id: 'created-id', name: 'test.json', mimeType: 'application/json' })));
 
       const result = await bus.dispatch({ action: 'backupSession', sessionId: 'sess-new' });
       expect(result.ok).toBe(true);
@@ -244,12 +263,12 @@ describe('DriveSync', () => {
       const { storageLocalData } = await import('../../../../tests/setup');
       storageLocalData[SYNC_STATE_KEY] = { enabled: true, lastSyncTime: null };
 
-      vi.mocked(chrome.identity.getAuthToken).mockResolvedValue({ token: 'test-token' } as chrome.identity.GetAuthTokenResult);
+      vi.mocked(chrome.identity.getAuthToken).mockImplementation(async () => ({ token: 'test-token' } as chrome.identity.GetAuthTokenResult));
 
       const session = createSession({ id: 'sess-existing', driveFileId: 'drive-existing' });
       await db.putSession(session);
 
-      mockFetch.mockResolvedValueOnce(mockResponse({ id: 'drive-existing', name: 'test.json', mimeType: 'application/json' }));
+      mockFetch.mockImplementationOnce(async () => (mockResponse({ id: 'drive-existing', name: 'test.json', mimeType: 'application/json' })));
 
       const result = await bus.dispatch({ action: 'backupSession', sessionId: 'sess-existing' });
       expect(result.ok).toBe(true);
@@ -273,18 +292,61 @@ describe('DriveSync', () => {
       const { storageLocalData } = await import('../../../../tests/setup');
       storageLocalData[SYNC_STATE_KEY] = { enabled: true, lastSyncTime: null };
 
-      vi.mocked(chrome.identity.getAuthToken).mockResolvedValue({ token: 'test-token' } as chrome.identity.GetAuthTokenResult);
+      vi.mocked(chrome.identity.getAuthToken).mockImplementation(async () => ({ token: 'test-token' } as chrome.identity.GetAuthTokenResult));
 
       const session = createSession({ id: 'auto-backup' });
       await db.putSession(session);
 
-      mockFetch.mockResolvedValueOnce(mockResponse({ id: 'auto-id', name: 'test.json', mimeType: 'application/json' }));
+      mockFetch.mockImplementationOnce(async () => (mockResponse({ id: 'auto-id', name: 'test.json', mimeType: 'application/json' })));
 
       await backupSessionIfEnabled(db, session);
 
       expect(mockFetch).toHaveBeenCalledTimes(1);
       const updated = await db.getSession('auto-backup');
       expect(updated?.driveFileId).toBe('auto-id');
+    });
+
+    it('records the failure in sync state so the UI can surface it', async () => {
+      const { storageLocalData } = await import('../../../../tests/setup');
+      storageLocalData[SYNC_STATE_KEY] = { enabled: true, lastSyncTime: null };
+
+      vi.mocked(chrome.identity.getAuthToken).mockImplementation(async () => ({ token: 'test-token' } as chrome.identity.GetAuthTokenResult));
+
+      const session = createSession({ id: 'fail-backup' });
+      await db.putSession(session);
+
+      mockFetch.mockImplementationOnce(async () => (mockResponse('quota exceeded', false, 403)));
+
+      await backupSessionIfEnabled(db, session);
+
+      const status = await bus.dispatch({ action: 'getSyncStatus' });
+      const data = status.data as SyncStatus;
+      expect(data.lastError).toContain('createFile failed');
+      expect(data.lastErrorTime).toBeGreaterThan(0);
+    });
+
+    it('clears a previous error after a successful backup', async () => {
+      const { storageLocalData } = await import('../../../../tests/setup');
+      storageLocalData[SYNC_STATE_KEY] = {
+        enabled: true,
+        lastSyncTime: null,
+        lastError: 'old error',
+        lastErrorTime: 123,
+      };
+
+      vi.mocked(chrome.identity.getAuthToken).mockImplementation(async () => ({ token: 'test-token' } as chrome.identity.GetAuthTokenResult));
+
+      const session = createSession({ id: 'recover-backup' });
+      await db.putSession(session);
+
+      mockFetch.mockImplementationOnce(async () => (mockResponse({ id: 'ok-id', name: 'test.json', mimeType: 'application/json' })));
+
+      await backupSessionIfEnabled(db, session);
+
+      const status = await bus.dispatch({ action: 'getSyncStatus' });
+      const data = status.data as SyncStatus;
+      expect(data.lastError).toBeNull();
+      expect(data.lastSyncTime).toBeGreaterThan(0);
     });
   });
 });

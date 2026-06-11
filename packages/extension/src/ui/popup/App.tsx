@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'preact/hooks';
 import { sendMessage } from '@/hooks/use-message';
 import { useKeyboardNav } from '@/hooks/use-keyboard';
-import type { Settings, Session } from '@/data/types';
+import type { Settings, Session, Workspace } from '@/data/types';
 import { DEFAULT_SETTINGS } from '@/shared/constants';
 import { SearchBar } from '../components/SearchBar';
 import { SearchResults, type SearchResultItem } from '../components/SearchResults';
@@ -20,6 +20,7 @@ export function App() {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionsExpanded, setSessionsExpanded] = useState(false);
+  const [workspaceName, setWorkspaceName] = useState('Default');
   const showResults = query.length > 0 && results.length > 0;
 
   // Fetch initial state
@@ -46,6 +47,11 @@ export function App() {
       const sessRes = await sendMessage<Session[]>({ action: 'getSessions' });
       if (sessRes.ok && sessRes.data) {
         setSessions(sessRes.data.sort((a, b) => b.createdAt - a.createdAt));
+      }
+
+      const wsRes = await sendMessage<Workspace>({ action: 'getActiveWorkspace' });
+      if (wsRes.ok && wsRes.data) {
+        setWorkspaceName(wsRes.data.name);
       }
     })();
   }, []);
@@ -157,6 +163,14 @@ export function App() {
     showToast('Session restored');
   }, []);
 
+  const handleResultSelect = useCallback((item: SearchResultItem) => {
+    if (item.kind === 'tab') {
+      switchToTab(item.tabId, item.windowId);
+    } else {
+      handleRestoreSession(item.sessionId);
+    }
+  }, [switchToTab, handleRestoreSession]);
+
   const handleOpenPanel = useCallback(async () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -175,7 +189,7 @@ export function App() {
     onSelect: setSelectedIndex,
     onConfirm: (index) => {
       const r = results[index];
-      if (r) switchToTab(r.tabId, r.windowId);
+      if (r) handleResultSelect(r);
     },
     onDismiss: () => {
       setQuery('');
@@ -208,7 +222,7 @@ export function App() {
       <StatusLine
         tabCount={tabCount}
         groupCount={groupCount}
-        workspaceName="Default"
+        workspaceName={workspaceName}
         onOpenPanel={handleOpenPanel}
       />
 
@@ -225,7 +239,7 @@ export function App() {
           <SearchResults
             results={results}
             selectedIndex={selectedIndex}
-            onSelect={(tabId, wId) => switchToTab(tabId, wId)}
+            onSelect={handleResultSelect}
             visible
           />
         </div>
@@ -281,7 +295,7 @@ export function App() {
         >
           Shortcuts
         </a>
-        <span class={styles.workspace}>Default</span>
+        <span class={styles.workspace}>{workspaceName}</span>
       </div>
 
       <ToastContainer />

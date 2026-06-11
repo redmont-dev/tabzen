@@ -12,7 +12,7 @@ export function Privacy() {
 
       <main class={styles.content}>
         <h1>Privacy Policy</h1>
-        <p class={styles.updated}>Last updated: March 23, 2026</p>
+        <p class={styles.updated}>Last updated: June 10, 2026</p>
 
         <section>
           <h2>Summary</h2>
@@ -37,6 +37,10 @@ export function Privacy() {
 
         <section>
           <h2>Google Drive sync (opt-in)</h2>
+          <p class={styles.updated}>
+            Note: Google Drive sync is not available in the current release. This section
+            describes the planned opt-in behavior for a future version.
+          </p>
           <p>
             If you enable Google Drive sync in settings, Tabzen uses Chrome's identity API to
             access a hidden app folder in your Google Drive. This folder is only accessible by Tabzen —
@@ -60,23 +64,11 @@ export function Privacy() {
         </section>
 
         <section>
-          <h2>Anonymous telemetry (opt-in)</h2>
+          <h2>Telemetry</h2>
           <p>
-            Tabzen offers optional, anonymous usage telemetry to help improve the extension.
-            This is <strong>off by default</strong> and must be explicitly enabled in Settings &gt; Privacy.
+            Tabzen has <strong>no telemetry</strong>. The extension contains no analytics SDK,
+            no crash reporting, and no code that transmits usage data anywhere.
           </p>
-          <p>If enabled, Tabzen sends anonymous, aggregated data such as:</p>
-          <ul>
-            <li>Which features are used (e.g., "user sorted tabs")</li>
-            <li>General usage patterns (e.g., "user has 40 tabs open")</li>
-          </ul>
-          <p>Telemetry <strong>never</strong> includes:</p>
-          <ul>
-            <li>URLs, page titles, or browsing history</li>
-            <li>Personal information</li>
-            <li>Session or rule content</li>
-          </ul>
-          <p>You can disable telemetry at any time. No data is sent while it's off.</p>
         </section>
 
         <section>
@@ -87,8 +79,7 @@ export function Privacy() {
             <li><strong>storage</strong> — to save your settings, rules, and sessions locally</li>
             <li><strong>webNavigation</strong> — to detect duplicate tabs opened via link clicks</li>
             <li><strong>alarms</strong> — to schedule auto-save timers</li>
-            <li><strong>notifications</strong> — to confirm before auto-saving</li>
-            <li><strong>identity</strong> — to authenticate with Google Drive (only used if sync is enabled)</li>
+            <li><strong>notifications</strong> — to confirm auto-saved sessions and created rules</li>
             <li><strong>contextMenus</strong> — to add right-click tab actions</li>
             <li><strong>sidePanel</strong> — to display the side panel UI</li>
           </ul>
@@ -109,12 +100,10 @@ export function Privacy() {
         <section>
           <h2>Third parties</h2>
           <p>
-            Tabzen does not share data with any third party. The only external service Tabzen
-            communicates with is Google Drive, and only when you enable sync.
-          </p>
-          <p>
-            If you enable telemetry, anonymous data is sent to our analytics provider. No
-            personal or browsable data is included.
+            Tabzen does not share data with any third party. In the current release, Tabzen
+            does not communicate with any external service at all. When Google Drive sync
+            ships in a future version, Drive will be the only external service, and only if
+            you explicitly enable it.
           </p>
         </section>
 

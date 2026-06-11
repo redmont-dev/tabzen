@@ -24,7 +24,6 @@ export const DEFAULT_SETTINGS: Settings = {
   autoSaveSchedule: 'disabled',
   autoSaveDailyTime: '18:00',
   autoSaveOnClose: false,
-  autoSaveCountdown: 15,
   autoSaveSkipConfirm: false,
   activeWorkspaceId: 'default',
   telemetryEnabled: false,
@@ -55,6 +54,16 @@ export const NON_RESTORABLE_PROTOCOLS = [
 
 export const AUTO_SAVE_ALARM_NAME = 'tabzen-auto-save';
 export const SYNC_STATE_KEY = 'tabzen-sync-state';
+// Drive sync is feature-flagged off for the v1 store release. Enabling it
+// requires a Google OAuth client bound to the published extension ID:
+// restore the "oauth2" block and "identity" permission in manifest.json,
+// then flip this flag. Targeted for v1.1.
+export const DRIVE_SYNC_ENABLED = false;
+export const PENDING_ANALYTICS_KEY = 'tabzen-pending-analytics';
+export const WINDOW_SNAPSHOT_PREFIX = 'tabzen-window-snapshot-';
+export const PENDING_SEARCH_KEY = 'tabzen-pending-search';
+// Skip save-on-close for trivial windows (single-tab popups, blank windows)
+export const MIN_TABS_FOR_CLOSE_SAVE = 2;
 
 export function createDefaultWorkspace(): Workspace {
   return {

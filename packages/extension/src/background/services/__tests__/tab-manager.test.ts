@@ -14,11 +14,11 @@ describe('TabManager', () => {
 
   describe('sortTabs', () => {
     it('sorts tabs by title A-Z within a window', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Banana', url: 'https://b.com', index: 0, windowId: 1, groupId: -1, pinned: false },
         { id: 2, title: 'Apple', url: 'https://a.com', index: 1, windowId: 1, groupId: -1, pinned: false },
         { id: 3, title: 'Cherry', url: 'https://c.com', index: 2, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
       const result = await bus.dispatch({
         action: 'sortTabs',
@@ -33,11 +33,11 @@ describe('TabManager', () => {
     });
 
     it('sorts tabs by URL Z-A', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'A', url: 'https://a.com', index: 0, windowId: 1, groupId: -1, pinned: false },
         { id: 2, title: 'C', url: 'https://c.com', index: 1, windowId: 1, groupId: -1, pinned: false },
         { id: 3, title: 'B', url: 'https://b.com', index: 2, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
       const result = await bus.dispatch({
         action: 'sortTabs',
@@ -52,10 +52,10 @@ describe('TabManager', () => {
     });
 
     it('sorts tabs within a specific group only', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Banana', url: 'https://b.com', index: 0, windowId: 1, groupId: 5, pinned: false },
         { id: 2, title: 'Apple', url: 'https://a.com', index: 1, windowId: 1, groupId: 5, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
       const result = await bus.dispatch({
         action: 'sortTabs',
@@ -70,11 +70,11 @@ describe('TabManager', () => {
     });
 
     it('skips pinned tabs during sort', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Pinned', url: 'https://p.com', index: 0, windowId: 1, groupId: -1, pinned: true },
         { id: 2, title: 'Banana', url: 'https://b.com', index: 1, windowId: 1, groupId: -1, pinned: false },
         { id: 3, title: 'Apple', url: 'https://a.com', index: 2, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
       await bus.dispatch({
         action: 'sortTabs',
@@ -113,19 +113,19 @@ describe('TabManager', () => {
         createdAt: 0,
       }];
       storageSyncData['settings'] = {
-        ...storageSyncData['settings'],
+        ...(storageSyncData['settings'] as object),
         activeWorkspaceId: 'default',
       };
 
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Banana', url: 'https://banana.com', index: 0, windowId: 1, groupId: 10, pinned: false },
         { id: 2, title: 'Important', url: 'https://important.com/doc', index: 1, windowId: 1, groupId: 10, pinned: false },
         { id: 3, title: 'Apple', url: 'https://apple.com', index: 2, windowId: 1, groupId: 10, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
         { id: 10, title: 'Work', color: 'blue', collapsed: false, windowId: 1 },
-      ] as chrome.tabGroups.TabGroup[]);
+      ] as chrome.tabGroups.TabGroup[]));
 
       await bus.dispatch({
         action: 'sortTabs',
@@ -154,11 +154,11 @@ describe('TabManager', () => {
     });
 
     it('closes duplicate tabs keeping the first occurrence', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://example.com/page', index: 0, windowId: 1, pinned: false },
         { id: 2, url: 'https://example.com/other', index: 1, windowId: 1, pinned: false },
         { id: 3, url: 'https://example.com/page', index: 2, windowId: 1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
       const result = await bus.dispatch({ action: 'removeDuplicates', windowId: 1 });
 
@@ -168,10 +168,10 @@ describe('TabManager', () => {
     });
 
     it('treats http and https as same URL when protocolAgnostic is true', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://example.com/page', index: 0, windowId: 1, pinned: false },
         { id: 2, url: 'http://example.com/page', index: 1, windowId: 1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
       const result = await bus.dispatch({ action: 'removeDuplicates', windowId: 1 });
 
@@ -180,10 +180,10 @@ describe('TabManager', () => {
     });
 
     it('strips fragments before comparing', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://example.com/page', index: 0, windowId: 1, pinned: false },
         { id: 2, url: 'https://example.com/page#section', index: 1, windowId: 1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
       const result = await bus.dispatch({ action: 'removeDuplicates', windowId: 1 });
 
@@ -191,10 +191,10 @@ describe('TabManager', () => {
     });
 
     it('does not close pinned tabs', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://example.com/page', index: 0, windowId: 1, pinned: true },
         { id: 2, url: 'https://example.com/page', index: 1, windowId: 1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
       const result = await bus.dispatch({ action: 'removeDuplicates', windowId: 1 });
 
@@ -205,10 +205,10 @@ describe('TabManager', () => {
     });
 
     it('returns removed count of 0 when no duplicates', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://a.com', index: 0, windowId: 1, pinned: false },
         { id: 2, url: 'https://b.com', index: 1, windowId: 1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
       const result = await bus.dispatch({ action: 'removeDuplicates', windowId: 1 });
 
@@ -219,23 +219,23 @@ describe('TabManager', () => {
 
   describe('sortGroups', () => {
     it('sorts groups by name alphabetically', async () => {
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
         { id: 10, title: 'Work', color: 'blue', collapsed: false, windowId: 1 },
         { id: 11, title: 'Fun', color: 'green', collapsed: false, windowId: 1 },
         { id: 12, title: 'Dev', color: 'red', collapsed: false, windowId: 1 },
-      ] as chrome.tabGroups.TabGroup[]);
+      ] as chrome.tabGroups.TabGroup[]));
 
       // Each group has one tab
       vi.mocked(chrome.tabs.query)
-        .mockResolvedValueOnce([ // Dev group tabs
+        .mockImplementationOnce(async () => ([ // Dev group tabs
           { id: 30, groupId: 12, index: 4, windowId: 1, pinned: false },
-        ] as chrome.tabs.Tab[])
-        .mockResolvedValueOnce([ // Fun group tabs
+        ] as chrome.tabs.Tab[]))
+        .mockImplementationOnce(async () => ([ // Fun group tabs
           { id: 20, groupId: 11, index: 2, windowId: 1, pinned: false },
-        ] as chrome.tabs.Tab[])
-        .mockResolvedValueOnce([ // Work group tabs
+        ] as chrome.tabs.Tab[]))
+        .mockImplementationOnce(async () => ([ // Work group tabs
           { id: 10, groupId: 10, index: 0, windowId: 1, pinned: false },
-        ] as chrome.tabs.Tab[]);
+        ] as chrome.tabs.Tab[]));
 
       const result = await bus.dispatch({ action: 'sortGroups', windowId: 1, mode: 'name' });
 
@@ -247,22 +247,22 @@ describe('TabManager', () => {
     it('sorts groups by color using color order from settings', async () => {
       const { storageSyncData } = await import('../../../../tests/setup');
       storageSyncData['settings'] = {
-        ...storageSyncData['settings'],
+        ...(storageSyncData['settings'] as object),
         colorOrder: ['red', 'blue', 'green', 'grey', 'yellow', 'pink', 'purple', 'cyan', 'orange'],
       };
 
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
         { id: 10, title: 'A', color: 'blue', collapsed: false, windowId: 1 },
         { id: 11, title: 'B', color: 'red', collapsed: false, windowId: 1 },
-      ] as chrome.tabGroups.TabGroup[]);
+      ] as chrome.tabGroups.TabGroup[]));
 
       vi.mocked(chrome.tabs.query)
-        .mockResolvedValueOnce([ // red (B) group first in color order
+        .mockImplementationOnce(async () => ([ // red (B) group first in color order
           { id: 20, groupId: 11, index: 2, windowId: 1, pinned: false },
-        ] as chrome.tabs.Tab[])
-        .mockResolvedValueOnce([ // blue (A) group second
+        ] as chrome.tabs.Tab[]))
+        .mockImplementationOnce(async () => ([ // blue (A) group second
           { id: 10, groupId: 10, index: 0, windowId: 1, pinned: false },
-        ] as chrome.tabs.Tab[]);
+        ] as chrome.tabs.Tab[]));
 
       const result = await bus.dispatch({ action: 'sortGroups', windowId: 1, mode: 'color' });
 
@@ -273,10 +273,10 @@ describe('TabManager', () => {
 
   describe('collapseAll', () => {
     it('collapses all groups in a window', async () => {
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
         { id: 10, title: 'Work', color: 'blue', collapsed: false, windowId: 1 },
         { id: 11, title: 'Fun', color: 'green', collapsed: false, windowId: 1 },
-      ] as chrome.tabGroups.TabGroup[]);
+      ] as chrome.tabGroups.TabGroup[]));
 
       const result = await bus.dispatch({ action: 'collapseAll', windowId: 1 });
 
@@ -286,7 +286,7 @@ describe('TabManager', () => {
     });
 
     it('handles window with no groups', async () => {
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const result = await bus.dispatch({ action: 'collapseAll', windowId: 1 });
 
@@ -310,10 +310,10 @@ describe('TabManager', () => {
 
     it('runs all enabled cleanup steps', async () => {
       // Minimal mocks so each step doesn't fail
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://a.com', title: 'A', index: 0, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const result = await bus.dispatch({ action: 'cleanUp', windowId: 1 });
 
@@ -331,8 +331,8 @@ describe('TabManager', () => {
         cleanupCollapse: false,
       };
 
-      vi.mocked(chrome.tabs.query).mockResolvedValue([]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const result = await bus.dispatch({ action: 'cleanUp', windowId: 1 });
 
@@ -345,13 +345,13 @@ describe('TabManager', () => {
 
   describe('getWindowInfo', () => {
     it('returns tabs and groups for a window', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, title: 'Tab 1', url: 'https://a.com', index: 0, windowId: 1, groupId: -1, pinned: false },
         { id: 2, title: 'Tab 2', url: 'https://b.com', index: 1, windowId: 1, groupId: 10, pinned: false },
-      ] as chrome.tabs.Tab[]);
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
         { id: 10, title: 'Work', color: 'blue', collapsed: false, windowId: 1 },
-      ] as chrome.tabGroups.TabGroup[]);
+      ] as chrome.tabGroups.TabGroup[]));
 
       const result = await bus.dispatch({ action: 'getWindowInfo', windowId: 1 });
 

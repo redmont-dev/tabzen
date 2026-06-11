@@ -82,10 +82,11 @@ describe('ContextMenus', () => {
       discarded: false,
       autoDiscardable: true,
       groupId: -1,
+      frozen: false,
     };
 
     it('moves tab to a new group when "New group" is clicked', async () => {
-      vi.mocked(chrome.tabs.group).mockResolvedValue(42);
+      vi.mocked(chrome.tabs.group).mockImplementation(async () => (42));
 
       await handleMenuClick(
         bus,
@@ -114,7 +115,7 @@ describe('ContextMenus', () => {
     });
 
     it('dispatches removeDuplicates when "Close duplicates" is clicked', async () => {
-      vi.mocked(chrome.tabs.query).mockResolvedValue([]);
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([]));
 
       await handleMenuClick(
         bus,
@@ -126,15 +127,76 @@ describe('ContextMenus', () => {
       expect(chrome.tabs.query).toHaveBeenCalledWith({ windowId: 1 });
     });
 
-    it('dispatches searchTabs when "Find duplicates" is clicked', async () => {
+    it('hands the query to the side panel when "Find duplicates" is clicked', async () => {
       await handleMenuClick(
         bus,
         { menuItemId: MENU_IDS.FIND_DUPLICATES } as chrome.contextMenus.OnClickData,
         mockTab,
       );
 
-      // searchTabs handler should have been called
-      // The search index was registered so it processes the request
+      const { storageSessionData } = await import('../../../../tests/setup');
+      const { PENDING_SEARCH_KEY } = await import('@/shared/constants');
+      expect(storageSessionData[PENDING_SEARCH_KEY]).toBe(mockTab.url);
+      expect(chrome.sidePanel.open).toHaveBeenCalledWith({ windowId: 1 });
+    });
+
+    it('creates a domain rule in the active workspace when "Create rule" is clicked', async () => {
+      const updateCalls: Array<{ workspaceId: string; updates: { rules?: unknown[] } }> = [];
+      bus.register('updateWorkspace', async (req) => {
+        updateCalls.push(req as never);
+        return { ok: true, data: {} };
+      });
+      let rulesApplied = false;
+      bus.register('applyRules', async () => {
+        rulesApplied = true;
+        return { ok: true };
+      });
+
+      await handleMenuClick(
+        bus,
+        { menuItemId: MENU_IDS.CREATE_RULE } as chrome.contextMenus.OnClickData,
+        mockTab,
+      );
+
+      expect(updateCalls).toHaveLength(1);
+      expect(updateCalls[0].workspaceId).toBe('default');
+      expect(updateCalls[0].updates.rules).toHaveLength(1);
+      expect(updateCalls[0].updates.rules![0]).toMatchObject({
+        type: 'domain',
+        pattern: 'github.com',
+        groupName: 'github.com',
+        enabled: true,
+        source: 'user',
+      });
+      expect(rulesApplied).toBe(true);
+      expect(chrome.notifications.create).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Rule created' }),
+      );
+    });
+
+    it('does not duplicate an existing rule for the same domain', async () => {
+      const freshBus = new MessageBus();
+      freshBus.register('getActiveWorkspace', async () => ({
+        ok: true,
+        data: {
+          id: 'default',
+          name: 'Default',
+          rules: [{ id: 'r1', type: 'domain', pattern: 'github.com', groupName: 'GitHub', color: 'blue', enabled: true, source: 'user' }],
+        },
+      }));
+      const updateWorkspace = vi.fn(async () => ({ ok: true }));
+      freshBus.register('updateWorkspace', updateWorkspace);
+
+      await handleMenuClick(
+        freshBus,
+        { menuItemId: MENU_IDS.CREATE_RULE } as chrome.contextMenus.OnClickData,
+        mockTab,
+      );
+
+      expect(updateWorkspace).not.toHaveBeenCalled();
+      expect(chrome.notifications.create).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Rule already exists' }),
+      );
     });
 
     it('does nothing when tab has no id', async () => {

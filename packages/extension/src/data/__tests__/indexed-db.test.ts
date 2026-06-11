@@ -23,6 +23,7 @@ const stubSnapshot = (overrides: Partial<AnalyticsSnapshot> = {}): AnalyticsSnap
   topDomains: [],
   duplicatesBlocked: 0,
   sessionsUsed: 0,
+  tabsOpened: 0,
   ...overrides,
 });
 

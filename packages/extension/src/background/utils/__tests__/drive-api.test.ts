@@ -9,7 +9,7 @@ describe('DriveAPI', () => {
   beforeEach(() => {
     mockGetToken.mockClear();
     mockFetch = vi.fn();
-    globalThis.fetch = mockFetch;
+    vi.stubGlobal('fetch', mockFetch);
   });
 
   function createApi() {
@@ -29,7 +29,7 @@ describe('DriveAPI', () => {
     it('sends GET request with correct params and returns files', async () => {
       api = createApi();
       const files = [{ id: 'f1', name: 'session.json', mimeType: 'application/json' }];
-      mockFetch.mockResolvedValue(mockResponse({ files }));
+      mockFetch.mockImplementation(async () => (mockResponse({ files })));
 
       const result = await api.listFiles();
 
@@ -43,7 +43,7 @@ describe('DriveAPI', () => {
 
     it('throws on non-OK response', async () => {
       api = createApi();
-      mockFetch.mockResolvedValue(mockResponse('Not found', false, 404));
+      mockFetch.mockImplementation(async () => (mockResponse('Not found', false, 404)));
 
       await expect(api.listFiles()).rejects.toThrow('Drive API listFiles failed (404)');
     });
@@ -53,7 +53,7 @@ describe('DriveAPI', () => {
     it('sends multipart POST with metadata and content', async () => {
       api = createApi();
       const driveFile = { id: 'new-id', name: 'test.json', mimeType: 'application/json' };
-      mockFetch.mockResolvedValue(mockResponse(driveFile));
+      mockFetch.mockImplementation(async () => (mockResponse(driveFile)));
 
       const result = await api.createFile('test.json', '{"data":true}');
 
@@ -71,7 +71,7 @@ describe('DriveAPI', () => {
 
     it('throws on non-OK response', async () => {
       api = createApi();
-      mockFetch.mockResolvedValue(mockResponse('Quota exceeded', false, 403));
+      mockFetch.mockImplementation(async () => (mockResponse('Quota exceeded', false, 403)));
 
       await expect(api.createFile('test.json', '{}')).rejects.toThrow('Drive API createFile failed (403)');
     });
@@ -80,7 +80,7 @@ describe('DriveAPI', () => {
   describe('readFile', () => {
     it('sends GET request with alt=media and returns text content', async () => {
       api = createApi();
-      mockFetch.mockResolvedValue(mockResponse('{"session":"data"}'));
+      mockFetch.mockImplementation(async () => (mockResponse('{"session":"data"}')));
 
       const result = await api.readFile('file-123');
 
@@ -92,7 +92,7 @@ describe('DriveAPI', () => {
 
     it('throws on non-OK response', async () => {
       api = createApi();
-      mockFetch.mockResolvedValue(mockResponse('Gone', false, 410));
+      mockFetch.mockImplementation(async () => (mockResponse('Gone', false, 410)));
 
       await expect(api.readFile('gone-id')).rejects.toThrow('Drive API readFile failed (410)');
     });
@@ -102,7 +102,7 @@ describe('DriveAPI', () => {
     it('sends PATCH request with media upload', async () => {
       api = createApi();
       const driveFile = { id: 'f1', name: 'test.json', mimeType: 'application/json' };
-      mockFetch.mockResolvedValue(mockResponse(driveFile));
+      mockFetch.mockImplementation(async () => (mockResponse(driveFile)));
 
       const result = await api.updateFile('f1', '{"updated":true}');
 
@@ -120,7 +120,7 @@ describe('DriveAPI', () => {
     it('sends DELETE request', async () => {
       api = createApi();
       // DELETE returns 204 No Content typically
-      mockFetch.mockResolvedValue({ ok: true, status: 204, text: async () => '', json: async () => ({}) });
+      mockFetch.mockImplementation(async () => ({ ok: true, status: 204, text: async () => '', json: async () => ({}) }));
 
       await api.deleteFile('del-id');
 
@@ -132,7 +132,7 @@ describe('DriveAPI', () => {
 
     it('throws on non-OK response', async () => {
       api = createApi();
-      mockFetch.mockResolvedValue(mockResponse('Forbidden', false, 403));
+      mockFetch.mockImplementation(async () => (mockResponse('Forbidden', false, 403)));
 
       await expect(api.deleteFile('bad-id')).rejects.toThrow('Drive API deleteFile failed (403)');
     });
@@ -141,7 +141,7 @@ describe('DriveAPI', () => {
   describe('token provider', () => {
     it('calls getToken for each request', async () => {
       api = createApi();
-      mockFetch.mockResolvedValue(mockResponse({ files: [] }));
+      mockFetch.mockImplementation(async () => (mockResponse({ files: [] })));
 
       await api.listFiles();
       await api.listFiles();

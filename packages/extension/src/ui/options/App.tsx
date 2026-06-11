@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import type { Settings, Workspace } from '@/data/types';
 import { sendMessage } from '@/hooks/use-message';
-import { DEFAULT_SETTINGS } from '@/shared/constants';
+import { DEFAULT_SETTINGS, DRIVE_SYNC_ENABLED } from '@/shared/constants';
 import { GeneralSection } from './sections/GeneralSection';
 import { WorkspacesSection } from './sections/WorkspacesSection';
 import { GroupingRulesSection } from './sections/GroupingRulesSection';
@@ -30,7 +30,7 @@ const NAV_ITEMS: { id: Section; label: string }[] = [
   { id: 'sorting', label: 'Sorting' },
   { id: 'duplicates', label: 'Duplicates' },
   { id: 'sessions', label: 'Sessions' },
-  { id: 'sync', label: 'Sync' },
+  ...(DRIVE_SYNC_ENABLED ? [{ id: 'sync', label: 'Sync' } as const] : []),
   { id: 'keyboard-shortcuts', label: 'Keyboard Shortcuts' },
   { id: 'analytics', label: 'Analytics' },
   { id: 'rule-packs', label: 'Rule Packs' },

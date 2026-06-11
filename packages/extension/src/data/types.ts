@@ -87,6 +87,7 @@ export interface AnalyticsSnapshot {
   topDomains: { domain: string; count: number }[];
   duplicatesBlocked: number;
   sessionsUsed: number;
+  tabsOpened: number;
 }
 
 export type AnalyticsTimeRange = 'today' | 'week' | 'month' | '90d';
@@ -95,6 +96,8 @@ export interface SyncStatus {
   enabled: boolean;
   lastSyncTime: number | null;
   sessionCount: number;
+  lastError: string | null;
+  lastErrorTime: number | null;
 }
 
 export interface DashboardStats {
@@ -125,7 +128,6 @@ export interface Settings {
   autoSaveSchedule: 'disabled' | 'hourly' | 'daily';
   autoSaveDailyTime: string;
   autoSaveOnClose: boolean;
-  autoSaveCountdown: number;
   autoSaveSkipConfirm: boolean;
   activeWorkspaceId: string;
   telemetryEnabled: boolean;

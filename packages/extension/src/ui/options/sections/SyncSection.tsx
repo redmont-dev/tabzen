@@ -133,6 +133,18 @@ export function SyncSection() {
               {status.sessionCount}
             </div>
           </div>
+
+          {status.lastError && (
+            <div class={styles.field}>
+              <div>
+                <div class={styles.fieldLabel} style={{ color: 'var(--group-red)' }}>Last sync error</div>
+                <div class={styles.fieldDescription}>
+                  {status.lastError}
+                  {status.lastErrorTime ? ` (${formatTime(status.lastErrorTime)})` : ''}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

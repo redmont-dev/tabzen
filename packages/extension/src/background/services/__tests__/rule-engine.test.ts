@@ -33,13 +33,13 @@ describe('RuleEngine', () => {
         createdAt: 0,
       }];
 
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://github.com/repo', title: 'Repo', index: 0, windowId: 1, groupId: -1, pinned: false },
         { id: 2, url: 'https://google.com', title: 'Google', index: 1, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
-      vi.mocked(chrome.tabs.group).mockResolvedValue(10);
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
+      vi.mocked(chrome.tabs.group).mockImplementation(async () => (10));
 
       const result = await bus.dispatch({ action: 'applyRules', windowId: 1 });
 
@@ -72,14 +72,14 @@ describe('RuleEngine', () => {
         createdAt: 0,
       }];
 
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://github.com/repo', title: 'Repo', index: 0, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
       // There's already a "GitHub" blue group
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
         { id: 10, title: 'GitHub', color: 'blue', collapsed: false, windowId: 1 },
-      ] as chrome.tabGroups.TabGroup[]);
+      ] as chrome.tabGroups.TabGroup[]));
 
       const result = await bus.dispatch({ action: 'applyRules', windowId: 1 });
 
@@ -107,13 +107,13 @@ describe('RuleEngine', () => {
         createdAt: 0,
       }];
 
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://github.com/repo', title: 'Repo', index: 0, windowId: 1, groupId: 10, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
         { id: 10, title: 'GitHub', color: 'blue', collapsed: false, windowId: 1 },
-      ] as chrome.tabGroups.TabGroup[]);
+      ] as chrome.tabGroups.TabGroup[]));
 
       await bus.dispatch({ action: 'applyRules', windowId: 1 });
 
@@ -144,13 +144,13 @@ describe('RuleEngine', () => {
         createdAt: 0,
       }];
 
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
-      vi.mocked(chrome.tabs.group).mockResolvedValue(10);
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
+      vi.mocked(chrome.tabs.group).mockImplementation(async () => (10));
 
       // Simulate the onUpdated callback
       const onUpdatedCallback = vi.mocked(chrome.tabs.onUpdated.addListener).mock.calls[0][0] as (
         tabId: number,
-        changeInfo: chrome.tabs.TabChangeInfo,
+        changeInfo: chrome.tabs.OnUpdatedInfo,
         tab: chrome.tabs.Tab,
       ) => void;
 
@@ -193,11 +193,11 @@ describe('RuleEngine', () => {
         createdAt: 0,
       }];
 
-      vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
 
       const onUpdatedCallback = vi.mocked(chrome.tabs.onUpdated.addListener).mock.calls[0][0] as (
         tabId: number,
-        changeInfo: chrome.tabs.TabChangeInfo,
+        changeInfo: chrome.tabs.OnUpdatedInfo,
         tab: chrome.tabs.Tab,
       ) => void;
 
@@ -234,7 +234,7 @@ describe('RuleEngine', () => {
 
       const onUpdatedCallback = vi.mocked(chrome.tabs.onUpdated.addListener).mock.calls[0][0] as (
         tabId: number,
-        changeInfo: chrome.tabs.TabChangeInfo,
+        changeInfo: chrome.tabs.OnUpdatedInfo,
         tab: chrome.tabs.Tab,
       ) => void;
 
@@ -269,18 +269,19 @@ describe('RuleEngine', () => {
         createdAt: 0,
       }];
 
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://github.com/repo1', title: 'Repo 1', index: 0, windowId: 1, groupId: -1, pinned: false },
         { id: 2, url: 'https://github.com/repo2', title: 'Repo 2', index: 1, windowId: 1, groupId: -1, pinned: false },
         { id: 3, url: 'https://github.com/repo3', title: 'Repo 3', index: 2, windowId: 1, groupId: -1, pinned: false },
         { id: 4, url: 'https://google.com/search', title: 'Search', index: 3, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
       const result = await bus.dispatch({ action: 'getSuggestedRules', windowId: 1 });
+      const data = result.data as Array<{ pattern: string }>;
 
       expect(result.ok).toBe(true);
-      expect(result.data).toHaveLength(1);
-      expect(result.data[0]).toEqual(expect.objectContaining({
+      expect(data).toHaveLength(1);
+      expect(data[0]).toEqual(expect.objectContaining({
         type: 'domain',
         pattern: 'github.com',
         groupName: 'github.com',
@@ -304,16 +305,17 @@ describe('RuleEngine', () => {
         createdAt: 0,
       }];
 
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://github.com/repo1', title: 'Repo 1', index: 0, windowId: 1, groupId: -1, pinned: false },
         { id: 2, url: 'https://github.com/repo2', title: 'Repo 2', index: 1, windowId: 1, groupId: -1, pinned: false },
         { id: 3, url: 'https://github.com/repo3', title: 'Repo 3', index: 2, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
       const result = await bus.dispatch({ action: 'getSuggestedRules', windowId: 1 });
+      const data = result.data as Array<{ pattern: string }>;
 
       expect(result.ok).toBe(true);
-      expect(result.data).toHaveLength(0);
+      expect(data).toHaveLength(0);
     });
 
     it('does not suggest for grouped tabs', async () => {
@@ -330,16 +332,17 @@ describe('RuleEngine', () => {
         createdAt: 0,
       }];
 
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://github.com/repo1', title: 'Repo 1', index: 0, windowId: 1, groupId: 10, pinned: false },
         { id: 2, url: 'https://github.com/repo2', title: 'Repo 2', index: 1, windowId: 1, groupId: 10, pinned: false },
         { id: 3, url: 'https://github.com/repo3', title: 'Repo 3', index: 2, windowId: 1, groupId: 10, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
       const result = await bus.dispatch({ action: 'getSuggestedRules', windowId: 1 });
+      const data = result.data as Array<{ pattern: string }>;
 
       expect(result.ok).toBe(true);
-      expect(result.data).toHaveLength(0);
+      expect(data).toHaveLength(0);
     });
 
     it('returns suggestions sorted by tab count descending', async () => {
@@ -356,7 +359,7 @@ describe('RuleEngine', () => {
         createdAt: 0,
       }];
 
-      vi.mocked(chrome.tabs.query).mockResolvedValue([
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
         { id: 1, url: 'https://github.com/a', title: 'A', index: 0, windowId: 1, groupId: -1, pinned: false },
         { id: 2, url: 'https://github.com/b', title: 'B', index: 1, windowId: 1, groupId: -1, pinned: false },
         { id: 3, url: 'https://github.com/c', title: 'C', index: 2, windowId: 1, groupId: -1, pinned: false },
@@ -364,15 +367,16 @@ describe('RuleEngine', () => {
         { id: 5, url: 'https://docs.google.com/b', title: 'D2', index: 4, windowId: 1, groupId: -1, pinned: false },
         { id: 6, url: 'https://docs.google.com/c', title: 'D3', index: 5, windowId: 1, groupId: -1, pinned: false },
         { id: 7, url: 'https://docs.google.com/d', title: 'D4', index: 6, windowId: 1, groupId: -1, pinned: false },
-      ] as chrome.tabs.Tab[]);
+      ] as chrome.tabs.Tab[]));
 
       const result = await bus.dispatch({ action: 'getSuggestedRules', windowId: 1 });
+      const data = result.data as Array<{ pattern: string }>;
 
       expect(result.ok).toBe(true);
-      expect(result.data).toHaveLength(2);
+      expect(data).toHaveLength(2);
       // docs.google.com has 4 tabs, github.com has 3 — docs first
-      expect(result.data[0].pattern).toBe('docs.google.com');
-      expect(result.data[1].pattern).toBe('github.com');
+      expect(data[0].pattern).toBe('docs.google.com');
+      expect(data[1].pattern).toBe('github.com');
     });
   });
 });

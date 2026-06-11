@@ -13,43 +13,39 @@ Tabzen organizes your browser tabs so you don't have to.
 Stop drowning in tabs. Tabzen automatically groups, searches, and manages your tabs with smart rules, workspaces, and keyboard shortcuts — all without sending a single byte of your data to any server.
 
 SMART AUTO-GROUPING
-Define rules by URL prefix, domain, or regex. Tabzen groups matching tabs into named, color-coded groups automatically. When it notices tabs from the same domain piling up, it suggests a rule for you.
+Define rules by URL prefix, domain, or regex. Tabzen groups matching tabs into named, color-coded groups automatically. Right-click any page and choose "Create rule from this tab" to build a rule in one click.
 
 INSTANT SEARCH
-Press Cmd+Shift+K to fuzzy search across every open tab and saved session. Results show which group a tab belongs to. Jump to any tab in milliseconds. Also works from the address bar — type "tabzen" and start searching.
-
-WORKSPACES
-Keep "Work" and "Personal" separate. Each workspace has its own rules, groups, and sessions. Soft switch changes your rules. Full switch saves your window and opens a fresh one.
+Press Ctrl+Shift+K (Cmd+Shift+K on Mac) to fuzzy-search every open tab and saved session. Results show which group a tab belongs to; selecting a session restores it. Also works from the address bar — type "tabzen", press Tab, and start searching.
 
 SESSIONS
-Save your entire window layout — every tab, every group, every position. Restore it later with one click. Auto-save on a schedule or when you close your last window. No more lost tabs.
+Save your entire window layout — every tab, every group, pinned state and order. Restore it later with one click. Auto-save on an hourly or daily schedule, or automatically when you close a window.
 
 DUPLICATE BLOCKER
-Never open the same page twice. Tabzen catches duplicates and switches to the existing tab instead. Configurable URL matching — strip fragments, trailing slashes, or ignore protocol.
+Never keep the same page open twice. When a link opens a page you already have, Tabzen closes the extra copy and keeps your place. Configurable URL matching — strip fragments, trailing slashes, or ignore protocol.
 
-KEYBOARD FIRST
-Full keyboard shortcuts for search, sort, save, collapse, and workspace switching. Power users never need the mouse.
+WORKSPACES
+Keep "Work" and "Personal" separate. Each workspace has its own grouping rules and priority colors. Switch from the side panel or new tab page and your rules re-apply instantly.
 
 SIDE PANEL
-A persistent, always-accessible panel showing your tab tree. Collapsible groups, drag and drop, live updates. Click a tab to switch, hover to close.
+A persistent panel showing your full tab tree, organized by group. Click a tab to switch to it, close tabs inline, save or clean up the window, and switch workspaces.
 
 NEW TAB DASHBOARD
-A clean command center replacing your new tab page. Workspace switcher, recent sessions, weekly stats, and search — all in one place.
+A clean command center replacing your new tab page: search, workspaces, recent sessions, and weekly stats in one place. (Optional — turn it off in settings.)
 
 TAB ANALYTICS
-See your browsing habits: top domains, peak tab counts, duplicates blocked. All data stays on your device — nothing is sent anywhere.
+See your browsing habits: tabs opened, peak tab count, duplicates blocked, top domains, and group usage. All analytics stay on your device — nothing is sent anywhere.
 
 RULE PACKS
-Pre-built rule sets for developers, designers, and researchers. Import, export, and share with your team.
+Pre-built rule sets for developers and designers. Import, export as JSON, and share with your team.
 
-GOOGLE DRIVE SYNC
-Optionally back up your sessions to Google Drive. Restore them on another device. One-click setup, no account needed beyond your Google account.
+ONE-KEY CLEANUP
+Ctrl+Shift+U (Cmd+Shift+U on Mac) runs your configured cleanup: remove duplicates, apply grouping rules, sort tabs and groups, collapse everything. Ctrl+Shift+S saves the current window as a session.
 
 PRIVACY FIRST
 - All data stored locally on your device
-- No browsing history transmitted
-- No accounts, no tracking, no ads
-- Optional anonymous telemetry (off by default)
+- No browsing history transmitted — the extension makes no network requests
+- No accounts, no telemetry, no tracking, no ads
 - Open source: https://github.com/redmont-dev/tabzen
 
 Free forever. Built by Redmont (https://redmont.dev).
@@ -69,13 +65,13 @@ https://tabzen.io
 ## Support URL
 https://github.com/redmont-dev/tabzen/issues
 
-## Screenshots Needed
-1. Side panel showing tab tree with color-coded groups (1280x800)
-2. Universal search overlay with results (1280x800)
-3. Workspace switcher in action (1280x800)
-4. New tab dashboard with sessions and stats (1280x800)
-5. Options page showing grouping rules (1280x800)
+## Screenshots (1280x800)
+Generated in `docs/store-assets/` — see chrome-web-store-submission.md.
+1. New tab dashboard with sessions and stats
+2. Options page showing grouping rules
+3. Side panel showing tab tree with color-coded groups
+4. Popup with quick actions and search
 
-## Promo Tile Text (440x280)
+## Promo Tile Text (440x280, optional)
 "Your tabs, finally organized."
 Tabzen logo + tagline on clean background

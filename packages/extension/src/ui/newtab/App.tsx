@@ -8,6 +8,8 @@ import { DashboardStats } from './DashboardStats';
 import type { Settings, Session, Workspace, DashboardStats as DashboardStatsType } from '@/data/types';
 import styles from './App.module.css';
 
+const STATS_REFRESH_MS = 60_000;
+
 export function App() {
   const [disabled, setDisabled] = useState(false);
   const [query, setQuery] = useState('');
@@ -19,6 +21,18 @@ export function App() {
   const [stats, setStats] = useState<DashboardStatsType | null>(null);
 
   const showResults = query.length > 0 && results.length > 0;
+
+  // The background handler aggregates snapshot history and merges live
+  // tab/group state, so the UI displays its result as-is.
+  const loadStats = useCallback(async () => {
+    const statsResult = await sendMessage<DashboardStatsType>({
+      action: 'getDashboardStats',
+      range: 'week',
+    });
+    if (statsResult.ok && statsResult.data) {
+      setStats(statsResult.data);
+    }
+  }, []);
 
   // Load data on mount
   useEffect(() => {
@@ -37,8 +51,7 @@ export function App() {
           id: ws.id,
           name: ws.name,
           icon: ws.icon,
-          tabCount: 0,
-          groupCount: 0,
+          ruleCount: ws.rules.length,
         }));
         setWorkspaces(cards);
       }
@@ -55,53 +68,20 @@ export function App() {
         setSessions(sessResult.data);
       }
 
-      // Load weekly stats (historical data from analytics)
-      const statsResult = await sendMessage<DashboardStatsType>({
-        action: 'getDashboardStats',
-        range: 'week',
-      });
-
-      // Query live data directly
-      const allTabs = await chrome.tabs.query({});
-      const allGroups = await chrome.tabGroups.query({});
-
-      // Compute top domains from current tabs
-      const domainCounts = new Map<string, number>();
-      for (const tab of allTabs) {
-        if (!tab.url) continue;
-        try {
-          const domain = new URL(tab.url).hostname;
-          if (domain) domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + 1);
-        } catch { /* skip invalid URLs */ }
-      }
-      const topDomains = Array.from(domainCounts.entries())
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5)
-        .map(([domain, count]) => ({ domain, count }));
-
-      // Compute group usage from current groups
-      const groupUsage: Array<{ name: string; color: string; count: number }> = [];
-      for (const group of allGroups) {
-        const groupTabs = allTabs.filter(t => t.groupId === group.id);
-        groupUsage.push({
-          name: group.title ?? 'Untitled',
-          color: group.color,
-          count: groupTabs.length,
-        });
-      }
-
-      // Merge historical counters with live data
-      const historicalStats = statsResult.ok && statsResult.data ? statsResult.data : null;
-      setStats({
-        tabsOpened: allTabs.length,
-        peakTabCount: allTabs.length,
-        duplicatesBlocked: historicalStats?.duplicatesBlocked ?? 0,
-        sessionsUsed: historicalStats?.sessionsUsed ?? 0,
-        topDomains,
-        groupUsage,
-      });
+      await loadStats();
     })();
-  }, []);
+
+    // Keep stats fresh while the page stays open
+    const interval = setInterval(loadStats, STATS_REFRESH_MS);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') loadStats();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [loadStats]);
 
   const handleSearch = useCallback(async (value: string) => {
     setQuery(value);
@@ -140,6 +120,28 @@ export function App() {
     await sendMessage({ action: 'restoreSession', sessionId });
   }, []);
 
+  const handleResultSelect = useCallback((item: SearchResultItem) => {
+    if (item.kind === 'tab') {
+      switchToTab(item.tabId, item.windowId);
+    } else {
+      handleRestore(item.sessionId);
+      setQuery('');
+      setResults([]);
+    }
+  }, [switchToTab, handleRestore]);
+
+  const handleSelectWorkspace = useCallback(async (id: string) => {
+    const win = await chrome.windows.getCurrent();
+    if (!win.id) return;
+    const res = await sendMessage({
+      action: 'switchWorkspace',
+      workspaceId: id,
+      fullSwitch: false,
+      windowId: win.id,
+    });
+    if (res.ok) setActiveWorkspaceId(id);
+  }, []);
+
   if (disabled) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', color: 'var(--text-tertiary)', fontSize: 13 }}>
@@ -175,7 +177,7 @@ export function App() {
             <SearchResults
               results={results}
               selectedIndex={selectedIndex}
-              onSelect={(tabId, windowId) => switchToTab(tabId, windowId)}
+              onSelect={handleResultSelect}
               visible
             />
           </div>
@@ -188,7 +190,7 @@ export function App() {
           <WorkspaceCards
             workspaces={workspaces}
             activeId={activeWorkspaceId}
-            onSelect={(id) => setActiveWorkspaceId(id)}
+            onSelect={handleSelectWorkspace}
           />
         </div>
       )}

@@ -1,5 +1,7 @@
-import { useState, useCallback } from 'preact/hooks';
+import { useState, useCallback, useEffect } from 'preact/hooks';
 import { useTabs } from '@/hooks/use-tabs';
+import { SessionStorage } from '@/data/storage';
+import { PENDING_SEARCH_KEY } from '@/shared/constants';
 import { useKeyboardNav } from '@/hooks/use-keyboard';
 import { sendMessage } from '@/hooks/use-message';
 import { SearchBar } from '../components/SearchBar';
@@ -31,13 +33,24 @@ export function App() {
     const response = await sendMessage<SearchResultItem[]>({
       action: 'searchTabs',
       query: value,
-      scope: 'tabs',
+      scope: 'all',
     });
 
     if (response.ok && response.data) {
       setResults(response.data);
     }
   }, []);
+
+  // Pick up a search query handed off by the "Find duplicates" context menu
+  useEffect(() => {
+    (async () => {
+      const pending = await SessionStorage.get<string | null>(PENDING_SEARCH_KEY, null);
+      if (pending) {
+        await SessionStorage.remove(PENDING_SEARCH_KEY);
+        handleSearch(pending);
+      }
+    })();
+  }, [handleSearch]);
 
   const switchToTab = useCallback(async (tabId: number, windowId?: number) => {
     try {
@@ -78,13 +91,24 @@ export function App() {
     showToast('Groups collapsed');
   }, [state]);
 
+  const handleResultSelect = useCallback(async (item: SearchResultItem) => {
+    if (item.kind === 'tab') {
+      switchToTab(item.tabId, item.windowId);
+    } else {
+      await sendMessage({ action: 'restoreSession', sessionId: item.sessionId });
+      showToast('Session restored');
+      setQuery('');
+      setResults([]);
+    }
+  }, [switchToTab]);
+
   useKeyboardNav({
     itemCount: results.length,
     selectedIndex,
     onSelect: setSelectedIndex,
     onConfirm: (index) => {
       const r = results[index];
-      if (r) switchToTab(r.tabId, r.windowId);
+      if (r) handleResultSelect(r);
     },
     onDismiss: () => {
       setQuery('');
@@ -104,7 +128,10 @@ export function App() {
         <span style={{ fontSize: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}
           onClick={() => chrome.runtime.openOptionsPage()}>Settings</span>
       </div>
-      <WorkspaceSwitcher activeWorkspace="Default" />
+      <WorkspaceSwitcher
+        windowId={state?.windowId ?? null}
+        onSwitched={(ws) => showToast(`Switched to ${ws.name}`)}
+      />
 
       <div class={styles.searchSection}>
         <SearchBar
@@ -120,7 +147,7 @@ export function App() {
           <SearchResults
             results={results}
             selectedIndex={selectedIndex}
-            onSelect={(tabId, windowId) => switchToTab(tabId, windowId)}
+            onSelect={handleResultSelect}
             visible
           />
         </div>

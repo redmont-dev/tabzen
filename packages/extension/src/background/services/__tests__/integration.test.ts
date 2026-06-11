@@ -49,14 +49,14 @@ describe('TabManager + RuleEngine Integration', () => {
     }];
 
     // Two github tabs (one is dup), one other tab
-    vi.mocked(chrome.tabs.query).mockResolvedValue([
+    vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
       { id: 1, url: 'https://github.com/repo', title: 'Repo', index: 0, windowId: 1, groupId: -1, pinned: false },
       { id: 2, url: 'https://github.com/repo', title: 'Repo', index: 1, windowId: 1, groupId: -1, pinned: false },
       { id: 3, url: 'https://example.com', title: 'Example', index: 2, windowId: 1, groupId: -1, pinned: false },
-    ] as chrome.tabs.Tab[]);
+    ] as chrome.tabs.Tab[]));
 
-    vi.mocked(chrome.tabGroups.query).mockResolvedValue([]);
-    vi.mocked(chrome.tabs.group).mockResolvedValue(10);
+    vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
+    vi.mocked(chrome.tabs.group).mockImplementation(async () => (10));
 
     const result = await bus.dispatch({ action: 'cleanUp', windowId: 1 });
 
@@ -73,7 +73,7 @@ describe('TabManager + RuleEngine Integration', () => {
     // Ensure getSettings and updateSettings work end-to-end (registered by TabManager or manually)
     // This test verifies message bus wiring is correct
     // ping is not registered in this test bus — but applyRules and sortTabs are
-    vi.mocked(chrome.tabs.query).mockResolvedValue([]);
+    vi.mocked(chrome.tabs.query).mockImplementation(async () => ([]));
     const sortResult = await bus.dispatch({
       action: 'sortTabs',
       windowId: 1,
