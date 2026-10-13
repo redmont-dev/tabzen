@@ -46,18 +46,6 @@ export function GeneralSection({ settings, onUpdate }: Props) {
           />
         </div>
 
-        <div class={styles.field}>
-          <div>
-            <div class={styles.fieldLabel}>Telemetry</div>
-            <div class={styles.fieldDescription}>Send anonymous usage data to help improve Tabzen</div>
-          </div>
-          <input
-            type="checkbox"
-            class={styles.checkbox}
-            checked={settings.telemetryEnabled}
-            onChange={(e) => onUpdate({ telemetryEnabled: (e.target as HTMLInputElement).checked })}
-          />
-        </div>
       </div>
     </div>
   );

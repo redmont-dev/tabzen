@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { matchRule, matchRules, extractDomain } from '../rule-matcher';
+import { matchRule, matchRules, extractDomain, normalizeDomainPattern } from '../rule-matcher';
 import type { GroupingRule } from '@/data/types';
 
 const makeRule = (overrides: Partial<GroupingRule> & Pick<GroupingRule, 'type' | 'pattern'>): GroupingRule => ({
@@ -48,6 +48,21 @@ describe('matchRule', () => {
     it('does not match a superdomain', () => {
       const rule = makeRule({ type: 'domain', pattern: 'docs.google.com' });
       expect(matchRule('https://google.com/search', rule)).toBe(false);
+    });
+
+    it('matches when pattern is a full URL (forgives common user input)', () => {
+      const rule = makeRule({ type: 'domain', pattern: 'https://support.example.com' });
+      expect(matchRule('https://support.example.com/a/tickets/123', rule)).toBe(true);
+    });
+
+    it('matches when pattern is a full URL with trailing slash', () => {
+      const rule = makeRule({ type: 'domain', pattern: 'https://support.example.com/' });
+      expect(matchRule('https://support.example.com/a/tickets/123', rule)).toBe(true);
+    });
+
+    it('matches when pattern is http URL but tab is https', () => {
+      const rule = makeRule({ type: 'domain', pattern: 'http://example.com' });
+      expect(matchRule('https://example.com/foo', rule)).toBe(true);
     });
   });
 
@@ -136,5 +151,27 @@ describe('extractDomain', () => {
 
   it('returns null for invalid URLs', () => {
     expect(extractDomain('not a url')).toBeNull();
+  });
+});
+
+describe('normalizeDomainPattern', () => {
+  it('passes through a bare hostname', () => {
+    expect(normalizeDomainPattern('example.com')).toBe('example.com');
+  });
+
+  it('passes through a wildcard pattern', () => {
+    expect(normalizeDomainPattern('*.example.com')).toBe('*.example.com');
+  });
+
+  it('extracts hostname from a full https URL', () => {
+    expect(normalizeDomainPattern('https://support.example.com')).toBe('support.example.com');
+  });
+
+  it('extracts hostname from a full URL with path', () => {
+    expect(normalizeDomainPattern('https://support.example.com/a/tickets')).toBe('support.example.com');
+  });
+
+  it('preserves an invalid pattern unchanged', () => {
+    expect(normalizeDomainPattern('not a url')).toBe('not a url');
   });
 });

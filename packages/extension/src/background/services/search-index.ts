@@ -1,7 +1,10 @@
 import Fuse from 'fuse.js';
 import type { MessageBus } from '../message-bus';
+import type { RecentSessions } from '@/data/types';
+import { SESSION_SEARCH_LIMIT, SESSION_SEARCH_TABS_PER_SESSION } from '@/shared/constants';
 
-export interface SearchResult {
+export interface TabSearchResult {
+  kind: 'tab';
   tabId: number;
   windowId: number;
   title: string;
@@ -11,9 +14,20 @@ export interface SearchResult {
   groupColor: string | null;
 }
 
-const MAX_RESULTS = 20;
+export interface SessionSearchResult {
+  kind: 'session';
+  sessionId: string;
+  name: string;
+  tabCount: number;
+  createdAt: number;
+}
 
-async function searchTabs(query: string): Promise<SearchResult[]> {
+export type SearchResult = TabSearchResult | SessionSearchResult;
+
+const MAX_RESULTS = 20;
+const MAX_SESSION_RESULTS = 10;
+
+async function searchTabs(query: string): Promise<TabSearchResult[]> {
   if (!query.trim()) return [];
 
   const tabs = await chrome.tabs.query({});
@@ -58,6 +72,7 @@ async function searchTabs(query: string): Promise<SearchResult[]> {
     const group = item.groupId !== -1 ? groupMap.get(item.groupId) : undefined;
 
     return {
+      kind: 'tab' as const,
       tabId: item.tabId,
       windowId: item.windowId,
       title: item.title,
@@ -69,10 +84,59 @@ async function searchTabs(query: string): Promise<SearchResult[]> {
   });
 }
 
+async function searchSessions(bus: MessageBus, query: string): Promise<SessionSearchResult[]> {
+  if (!query.trim()) return [];
+
+  const response = await bus.dispatch({
+    action: 'getRecentSessions',
+    limit: SESSION_SEARCH_LIMIT,
+  });
+  if (!response.ok || !response.data) return [];
+  const { sessions } = response.data as RecentSessions;
+
+  // Flatten each session's tabs into one string up front rather than letting
+  // Fuse walk the nested tabs array on every keystroke. A session can hold
+  // hundreds of tabs, and the nested-key traversal is what makes searching a
+  // large store crawl.
+  const items = sessions.map(session => ({
+    id: session.id,
+    name: session.name,
+    tabCount: session.tabs.length,
+    createdAt: session.createdAt,
+    tabText: session.tabs
+      .slice(0, SESSION_SEARCH_TABS_PER_SESSION)
+      .map(t => `${t.title} ${t.url}`)
+      .join(' '),
+  }));
+
+  const fuse = new Fuse(items, {
+    keys: [
+      { name: 'name', weight: 0.5 },
+      { name: 'tabText', weight: 0.5 },
+    ],
+    threshold: 0.3,
+    ignoreLocation: true,
+    includeScore: true,
+  });
+
+  return fuse.search(query, { limit: MAX_SESSION_RESULTS }).map(r => ({
+    kind: 'session' as const,
+    sessionId: r.item.id,
+    name: r.item.name,
+    tabCount: r.item.tabCount,
+    createdAt: r.item.createdAt,
+  }));
+}
+
 export function registerSearchIndex(bus: MessageBus): void {
   bus.register('searchTabs', async (req) => {
-    // For now, only 'tabs' scope is implemented. Sessions scope comes in Plan 4.
-    const results = await searchTabs(req.query);
+    const results: SearchResult[] = [];
+    if (req.scope === 'tabs' || req.scope === 'all') {
+      results.push(...await searchTabs(req.query));
+    }
+    if (req.scope === 'sessions' || req.scope === 'all') {
+      results.push(...await searchSessions(bus, req.query));
+    }
     return { ok: true, data: results };
   });
 }

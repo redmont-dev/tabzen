@@ -1,12 +1,9 @@
 import type { MessageBus } from '../message-bus';
-import type { SortBy, SortOrder, Settings, Workspace, PriorityRule, GroupSortMode, TabGroupColor } from '@/data/types';
-import { LocalStorage, SyncStorage } from '@/data/storage';
-import { DEFAULT_SETTINGS, STORAGE_KEYS, TAB_GROUP_COLORS } from '@/shared/constants';
+import type { SortBy, SortOrder, Workspace, PriorityRule, GroupSortMode, TabGroupColor } from '@/data/types';
+import { LocalStorage } from '@/data/storage';
+import { getSettings } from '@/data/settings';
+import { STORAGE_KEYS, TAB_GROUP_COLORS } from '@/shared/constants';
 import { normalizeUrl } from '../utils/url-normalize';
-
-async function getSettings(): Promise<Settings> {
-  return SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
-}
 
 async function getActiveWorkspace(): Promise<Workspace | null> {
   const settings = await getSettings();
@@ -43,6 +40,36 @@ function compareTabs(
   return sortOrder === 'asc' ? cmp : -cmp;
 }
 
+/**
+ * Put `tabIds` back into `group` after a move.
+ *
+ * chrome.tabs.move pulls tabs out of their group, and Chrome deletes a group
+ * the moment its last tab leaves. Re-grouping by the old id then fails, which
+ * would abort the whole sort and lose the group's title and color. When that
+ * happens, recreate the group and restore its appearance instead.
+ */
+async function regroupTabs(
+  tabIds: number[],
+  group: Pick<chrome.tabGroups.TabGroup, 'id' | 'title' | 'color' | 'collapsed'>,
+): Promise<void> {
+  if (tabIds.length === 0) return;
+  const ids = tabIds as [number, ...number[]];
+
+  try {
+    await chrome.tabs.group({ tabIds: ids, groupId: group.id });
+    return;
+  } catch {
+    // Group was destroyed when its last tab moved out — recreate it below.
+  }
+
+  const newGroupId = await chrome.tabs.group({ tabIds: ids });
+  await chrome.tabGroups.update(newGroupId, {
+    title: group.title ?? '',
+    color: group.color,
+    collapsed: group.collapsed,
+  });
+}
+
 async function sortTabsInGroup(
   tabs: chrome.tabs.Tab[],
   sortBy: SortBy,
@@ -50,6 +77,7 @@ async function sortTabsInGroup(
   groupColor: string | undefined,
   priorityRules: PriorityRule[],
   gId: number | undefined,
+  group?: chrome.tabGroups.TabGroup,
 ): Promise<void> {
   const unpinned = tabs.filter(t => !t.pinned);
   if (unpinned.length === 0) return;
@@ -72,20 +100,17 @@ async function sortTabsInGroup(
   const sorted = [...priority, ...normal];
 
   const startIndex = Math.min(...unpinned.map(t => t.index));
+  const tabIds = sorted.map(t => t.id).filter((id): id is number => id != null);
 
-  for (let i = 0; i < sorted.length; i++) {
-    const tab = sorted[i];
-    if (tab.id != null) {
-      await chrome.tabs.move(tab.id, { index: startIndex + i });
-    }
+  // One move for the whole run: moving tabs one at a time invalidates every
+  // index behind the one just moved, and briefly empties the group.
+  if (tabIds.length > 0) {
+    await chrome.tabs.move(tabIds, { index: startIndex });
   }
 
   // Re-group tabs after move (chrome.tabs.move removes tabs from groups)
   if (gId !== undefined && gId !== -1) {
-    const tabIds = sorted.map(t => t.id).filter(Boolean) as number[];
-    if (tabIds.length > 0) {
-      await chrome.tabs.group({ tabIds, groupId: gId });
-    }
+    await regroupTabs(tabIds, group ?? { id: gId, title: '', color: 'grey', collapsed: false });
   }
 }
 
@@ -101,15 +126,15 @@ async function sortTabs(
   if (groupId !== undefined) {
     // Sort within a specific group
     const tabs = await chrome.tabs.query({ windowId, groupId });
-    let groupColor: string | undefined;
+    let group: chrome.tabGroups.TabGroup | undefined;
 
-    if (groupId !== -1 && priorityRules.length > 0) {
+    if (groupId !== -1) {
       const groups = await chrome.tabGroups.query({ windowId });
-      const group = groups.find(g => g.id === groupId);
-      groupColor = group?.color;
+      group = groups.find(g => g.id === groupId);
     }
 
-    await sortTabsInGroup(tabs, sortBy, sortOrder, groupColor, priorityRules, groupId);
+    const groupColor = priorityRules.length > 0 ? group?.color : undefined;
+    await sortTabsInGroup(tabs, sortBy, sortOrder, groupColor, priorityRules, groupId, group);
   } else {
     // Sort all tabs in window, group by group
     const groups = await chrome.tabGroups.query({ windowId });
@@ -118,7 +143,7 @@ async function sortTabs(
     for (const group of groups) {
       const groupTabs = await chrome.tabs.query({ windowId, groupId: group.id });
       const groupColor = priorityRules.length > 0 ? group.color : undefined;
-      await sortTabsInGroup(groupTabs, sortBy, sortOrder, groupColor, priorityRules, group.id);
+      await sortTabsInGroup(groupTabs, sortBy, sortOrder, groupColor, priorityRules, group.id, group);
     }
 
     // Sort ungrouped tabs
@@ -130,7 +155,11 @@ async function sortTabs(
 
 async function removeDuplicates(windowId: number): Promise<number> {
   const settings = await getSettings();
-  const tabs = await chrome.tabs.query({ windowId });
+  // 'all-windows' compares against every open tab; the tab kept for each URL is
+  // still the first one encountered, so the user's oldest copy survives.
+  const tabs = settings.dedupScope === 'all-windows'
+    ? await chrome.tabs.query({})
+    : await chrome.tabs.query({ windowId });
   const seen = new Set<string>();
   const toClose: number[] = [];
 
@@ -181,23 +210,22 @@ async function sortGroups(windowId: number, mode: GroupSortMode): Promise<void> 
     });
   }
 
-  // Move each group's tabs in the sorted order. We find pinned tab count to know our starting index.
-  const allTabs = await chrome.tabs.query({ windowId, pinned: true });
-  let targetIndex = allTabs.length; // Start after pinned tabs
+  // Move each group's tabs in the sorted order, starting after the pinned tabs.
+  const pinnedTabs = await chrome.tabs.query({ windowId, pinned: true });
+  let targetIndex = pinnedTabs.length;
 
   for (const group of sorted) {
     const groupTabs = await chrome.tabs.query({ windowId, groupId: group.id });
-    const tabIds = groupTabs.map(t => t.id).filter(Boolean) as number[];
-    for (const tab of groupTabs) {
-      if (tab.id != null) {
-        await chrome.tabs.move(tab.id, { index: targetIndex });
-        targetIndex++;
-      }
-    }
+    const tabIds = groupTabs.map(t => t.id).filter((id): id is number => id != null);
+    if (tabIds.length === 0) continue;
+
+    // Move the group's tabs as one block — moving them individually leaves the
+    // group empty partway through, at which point Chrome deletes it.
+    await chrome.tabs.move(tabIds, { index: targetIndex });
+    targetIndex += tabIds.length;
+
     // Re-group tabs after move (chrome.tabs.move removes tabs from groups)
-    if (tabIds.length > 0) {
-      await chrome.tabs.group({ tabIds, groupId: group.id });
-    }
+    await regroupTabs(tabIds, group);
   }
 }
 
@@ -213,29 +241,17 @@ async function collapseAllGroups(windowId: number): Promise<void> {
  */
 async function enforceTabOrder(windowId: number): Promise<void> {
   const allTabs = await chrome.tabs.query({ windowId });
-  const groups = await chrome.tabGroups.query({ windowId });
 
-  // Find the end of pinned tabs
-  const pinnedCount = allTabs.filter(t => t.pinned).length;
+  // Move ungrouped unpinned tabs to the end, preserving their relative order.
+  // index -1 means "the end", which stays correct as the move happens; the
+  // per-tab indexes captured above go stale after the first move.
+  const ungroupedIds = allTabs
+    .filter(t => !t.pinned && t.groupId === -1)
+    .map(t => t.id)
+    .filter((id): id is number => id != null);
 
-  // Find all grouped tab ids
-  const groupedTabIds = new Set<number>();
-  for (const group of groups) {
-    const groupTabs = await chrome.tabs.query({ windowId, groupId: group.id });
-    for (const t of groupTabs) {
-      if (t.id != null) groupedTabIds.add(t.id);
-    }
-  }
-
-  // Move ungrouped unpinned tabs to the end
-  const ungrouped = allTabs.filter(t => !t.pinned && t.groupId === -1 && t.id != null);
-  let endIndex = allTabs.length - 1;
-  for (let i = ungrouped.length - 1; i >= 0; i--) {
-    const tab = ungrouped[i];
-    if (tab.id != null && tab.index !== endIndex) {
-      await chrome.tabs.move(tab.id, { index: endIndex });
-    }
-    endIndex--;
+  if (ungroupedIds.length > 0) {
+    await chrome.tabs.move(ungroupedIds, { index: -1 });
   }
 }
 

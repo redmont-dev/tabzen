@@ -2,6 +2,7 @@ import { useState, useCallback } from 'preact/hooks';
 import type { GroupingRule, Workspace, RuleType, TabGroupColor } from '@/data/types';
 import { sendMessage } from '@/hooks/use-message';
 import { TAB_GROUP_COLORS } from '@/shared/constants';
+import { normalizeDomainPattern } from '@/background/utils/rule-matcher';
 import { colorToVar } from '../../components/GroupHeader';
 import styles from '../App.module.css';
 
@@ -49,10 +50,13 @@ export function GroupingRulesSection({ workspace, onRefresh }: Props) {
 
   const handleAddRule = useCallback(async () => {
     if (!workspace || !newRule.pattern || !newRule.groupName) return;
+    const pattern = newRule.type === 'domain'
+      ? normalizeDomainPattern(newRule.pattern.trim())
+      : newRule.pattern.trim();
     const rule: GroupingRule = {
       id: `rule-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       type: newRule.type,
-      pattern: newRule.pattern,
+      pattern,
       groupName: newRule.groupName,
       color: newRule.color,
       enabled: true,
@@ -85,11 +89,12 @@ export function GroupingRulesSection({ workspace, onRefresh }: Props) {
         case 'domain': {
           try {
             const hostname = new URL(testUrl).hostname;
-            if (rule.pattern.startsWith('*.')) {
-              const base = rule.pattern.slice(2);
+            const pattern = normalizeDomainPattern(rule.pattern);
+            if (pattern.startsWith('*.')) {
+              const base = pattern.slice(2);
               matches = hostname === base || hostname.endsWith('.' + base);
             } else {
-              matches = hostname === rule.pattern;
+              matches = hostname === pattern;
             }
           } catch { /* invalid URL */ }
           break;

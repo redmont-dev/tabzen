@@ -8,11 +8,12 @@ import { registerSearchIndex } from './services/search-index';
 import { registerAnalyticsCollector } from './services/analytics-collector';
 import { registerContextMenus } from './services/context-menus';
 import { registerRulePacks } from './services/rule-packs';
+import { registerTabHistory } from './services/tab-history';
 import { initPortManager } from './ports';
-import { SyncStorage } from '@/data/storage';
-import { DEFAULT_SETTINGS, STORAGE_KEYS } from '@/shared/constants';
+import { getSettings, updateSettings } from '@/data/settings';
+import { TabzenDB } from '@/data/indexed-db';
 import { normalizeUrl } from './utils/url-normalize';
-import type { Settings } from '@/data/types';
+import type { TabSearchResult } from './services/search-index';
 
 const bus = new MessageBus();
 
@@ -22,34 +23,44 @@ registerTabManager(bus, applyRules);
 registerWorkspaceManager(bus, applyRules);
 registerSearchIndex(bus);
 
-// AnalyticsCollector is async (opens IndexedDB), so we initialize it separately
-registerAnalyticsCollector(bus).catch(err => {
-  console.error('Failed to initialize AnalyticsCollector:', err);
-});
+// One IndexedDB connection shared by every service. Separate connections to the
+// same database work today, but a future INDEXEDDB_VERSION bump would have each
+// blocking the other's upgrade.
+const db = new TabzenDB();
+const dbReady = db.open();
+
+// Handlers register synchronously and await DB readiness internally, so no
+// message arriving early can hit a missing handler.
+registerAnalyticsCollector(bus, db, dbReady);
 
 registerContextMenus(bus);
 registerRulePacks(bus);
+registerTabHistory(bus);
 
-// SessionManager is async (opens IndexedDB), so we initialize it separately
-// DriveSync shares the same DB instance
-registerSessionManager(bus).then(db => {
-  return registerDriveSync(bus, db);
-}).catch(err => {
-  console.error('Failed to initialize SessionManager/DriveSync:', err);
-});
+const sessionManager = registerSessionManager(bus, db, dbReady);
+registerDriveSync(bus, sessionManager.db, sessionManager.ready);
 
 bus.listen();
 bus.register('ping', async () => ({ ok: true, data: 'pong' }));
 
 bus.register('getSettings', async () => {
-  const settings = await SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+  const settings = await getSettings();
   return { ok: true, data: settings };
 });
 
 bus.register('updateSettings', async (req) => {
-  const current = await SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
-  const merged = { ...current, ...req.settings };
-  await SyncStorage.set(STORAGE_KEYS.SETTINGS, merged);
+  const merged = await updateSettings(current => ({ ...current, ...req.settings }));
+
+  // Reconcile auto-save (alarm + close snapshots) whenever its settings change
+  if (
+    'autoSaveSchedule' in req.settings ||
+    'autoSaveDailyTime' in req.settings ||
+    'autoSaveOnClose' in req.settings
+  ) {
+    const response = await bus.dispatch({ action: 'configureAutoSave' });
+    if (!response.ok) console.warn('Failed to reconfigure auto-save:', response.error);
+  }
+
   return { ok: true, data: merged };
 });
 
@@ -63,13 +74,7 @@ chrome.omnibox.onInputChanged.addListener(async (text, suggest) => {
   const response = await bus.dispatch({ action: 'searchTabs', query: text, scope: 'tabs' });
   if (!response.ok || !response.data) return;
 
-  const results = response.data as Array<{
-    tabId: number;
-    title: string;
-    url: string;
-    groupName: string | null;
-    groupColor: string | null;
-  }>;
+  const results = (response.data as TabSearchResult[]).filter(r => r.kind === 'tab');
 
   const suggestions = results.slice(0, 6).map(r => ({
     content: String(r.tabId),
@@ -96,7 +101,8 @@ chrome.omnibox.onInputEntered.addListener(async (text, disposition) => {
     // User pressed Enter on raw text — search and switch to best match
     const response = await bus.dispatch({ action: 'searchTabs', query: text, scope: 'tabs' });
     if (response.ok && response.data && Array.isArray(response.data) && response.data.length > 0) {
-      const best = (response.data as Array<{ tabId: number; windowId: number }>)[0];
+      const best = (response.data as TabSearchResult[]).filter(r => r.kind === 'tab')[0];
+      if (!best) return;
       try {
         await chrome.tabs.update(best.tabId, { active: true });
         await chrome.windows.update(best.windowId, { focused: true });
@@ -109,7 +115,7 @@ chrome.omnibox.onInputEntered.addListener(async (text, disposition) => {
 
 // Global keyboard commands
 chrome.commands.onCommand.addListener(async (command) => {
-  const window = await chrome.windows.getCurrent();
+  const window = await chrome.windows.getLastFocused();
   if (!window.id) return;
 
   switch (command) {
@@ -117,12 +123,15 @@ chrome.commands.onCommand.addListener(async (command) => {
       await bus.dispatch({ action: 'cleanUp', windowId: window.id });
       break;
     case 'search':
-      // Open the side panel so search is visible
-      await chrome.sidePanel.setOptions({ enabled: true });
-      // The side panel will auto-focus the search bar on open
+      // Commands count as a user gesture, so the panel can be opened directly.
+      // The side panel auto-focuses its search bar on mount.
+      await chrome.sidePanel.open({ windowId: window.id });
       break;
     case 'save-session':
       await bus.dispatch({ action: 'saveSession', windowId: window.id });
+      break;
+    case 'previous-tab':
+      await bus.dispatch({ action: 'switchToPreviousTab', windowId: window.id });
       break;
   }
 });
@@ -164,7 +173,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // Remove from pending — we only check once
   pendingLinkTabs.delete(tabId);
 
-  const settings = await SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+  const settings = await getSettings();
   if (!settings.dedupEnabled) return;
 
   // Skip non-http URLs
@@ -177,7 +186,9 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   });
 
   // Find an existing tab with the same normalized URL
-  const allTabs = await chrome.tabs.query({ windowId: tab.windowId });
+  const allTabs = settings.dedupScope === 'all-windows'
+    ? await chrome.tabs.query({})
+    : await chrome.tabs.query({ windowId: tab.windowId });
   for (const existing of allTabs) {
     if (existing.id === tabId) continue; // Skip self
     if (!existing.url || !existing.id) continue;
@@ -189,13 +200,34 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     });
 
     if (normalizedNew === normalizedExisting) {
-      // Duplicate found — close the new tab and switch to the existing one
+      // Duplicate found — replace the original with the newly loaded tab.
+      // If the original was pinned, fall back to keeping it (don't kill pinned).
       try {
-        await chrome.tabs.remove(tabId);
-        await chrome.tabs.update(existing.id, { active: true });
+        if (existing.pinned) {
+          await chrome.tabs.remove(tabId);
+          await chrome.tabs.update(existing.id, { active: true });
+          // Under 'all-windows' the surviving tab may live elsewhere; without
+          // focusing its window the click would appear to do nothing.
+          if (existing.windowId !== tab.windowId) {
+            await chrome.windows.update(existing.windowId, { focused: true });
+          }
+        } else {
+          // A group belongs to one window, so the original's group can only be
+          // inherited when both tabs are in the same window.
+          const sameWindow = existing.windowId === tab.windowId;
+          const targetGroupId = sameWindow ? existing.groupId : -1;
+          await chrome.tabs.remove(existing.id);
+          // Preserve grouping: move the new tab into the original's group.
+          if (tab.id != null && targetGroupId != null && targetGroupId !== -1) {
+            try {
+              await chrome.tabs.group({ tabIds: tab.id, groupId: targetGroupId });
+            } catch {
+              // Group may have been removed when the last member was closed
+            }
+          }
+        }
 
-        // Increment analytics counter
-        bus.dispatch({ action: 'incrementAnalyticsCounter', counter: 'duplicatesBlocked' }).catch(err => console.warn('Analytics increment failed:', err));
+        bus.dispatch({ action: 'incrementAnalyticsCounter', metric: 'duplicatesBlocked' }).catch(err => console.warn('Analytics increment failed:', err));
       } catch {
         // Tab may have already been closed
       }

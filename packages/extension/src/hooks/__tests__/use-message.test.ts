@@ -7,14 +7,14 @@ describe('sendMessage', () => {
   });
 
   it('sends a message and returns the response', async () => {
-    vi.mocked(chrome.runtime.sendMessage).mockResolvedValue({ ok: true, data: 'pong' });
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation(async () => ({ ok: true, data: 'pong' }));
     const response = await sendMessage({ action: 'ping' });
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({ action: 'ping' });
     expect(response).toEqual({ ok: true, data: 'pong' });
   });
 
   it('returns error response on failure', async () => {
-    vi.mocked(chrome.runtime.sendMessage).mockRejectedValue(new Error('disconnected'));
+    vi.mocked(chrome.runtime.sendMessage).mockImplementation(async () => { throw new Error('disconnected'); });
     const response = await sendMessage({ action: 'ping' });
     expect(response.ok).toBe(false);
     expect(response.error).toContain('disconnected');

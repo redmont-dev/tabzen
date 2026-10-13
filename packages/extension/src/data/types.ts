@@ -5,6 +5,7 @@ export type TabGroupColor =
 export type RuleType = 'prefix' | 'domain' | 'regex';
 export type RuleSource = 'user' | 'pack' | 'suggested';
 export type SessionSource = 'manual' | 'auto' | 'close';
+export type DedupScope = 'window' | 'all-windows';
 export type GroupSortMode = 'name' | 'color';
 export type SortBy = 'title' | 'url';
 export type SortOrder = 'asc' | 'desc';
@@ -58,6 +59,12 @@ export interface SessionGroup {
   collapsed: boolean;
 }
 
+/** A page of sessions plus how many exist in total, for "showing N of M". */
+export interface RecentSessions {
+  sessions: Session[];
+  total: number;
+}
+
 export interface Session {
   id: string;
   name: string;
@@ -87,6 +94,7 @@ export interface AnalyticsSnapshot {
   topDomains: { domain: string; count: number }[];
   duplicatesBlocked: number;
   sessionsUsed: number;
+  tabsOpened: number;
 }
 
 export type AnalyticsTimeRange = 'today' | 'week' | 'month' | '90d';
@@ -95,6 +103,8 @@ export interface SyncStatus {
   enabled: boolean;
   lastSyncTime: number | null;
   sessionCount: number;
+  lastError: string | null;
+  lastErrorTime: number | null;
 }
 
 export interface DashboardStats {
@@ -108,6 +118,8 @@ export interface DashboardStats {
 
 export interface Settings {
   dedupEnabled: boolean;
+  /** Whether duplicate detection looks at one window or every open window. */
+  dedupScope: DedupScope;
   stripFragments: boolean;
   stripTrailingSlash: boolean;
   protocolAgnostic: boolean;
@@ -125,7 +137,6 @@ export interface Settings {
   autoSaveSchedule: 'disabled' | 'hourly' | 'daily';
   autoSaveDailyTime: string;
   autoSaveOnClose: boolean;
-  autoSaveCountdown: number;
   autoSaveSkipConfirm: boolean;
   activeWorkspaceId: string;
   telemetryEnabled: boolean;

@@ -10,7 +10,6 @@
     "webNavigation",
     "alarms",
     "notifications",
-    "identity",
     "contextMenus",
     "sidePanel"
   ],
@@ -50,8 +49,11 @@
       "suggested_key": { "default": "Ctrl+Shift+U", "mac": "Command+Shift+U" },
       "description": "Clean up tabs"
     },
-    "save-session": {
+    "previous-tab": {
       "suggested_key": { "default": "Ctrl+Shift+S", "mac": "Command+Shift+S" },
+      "description": "Switch to previous tab"
+    },
+    "save-session": {
       "description": "Save current session"
     }
   },

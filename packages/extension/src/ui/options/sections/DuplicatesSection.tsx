@@ -27,6 +27,25 @@ export function DuplicatesSection({ settings, onUpdate }: Props) {
 
         <div class={styles.field}>
           <div>
+            <div class={styles.fieldLabel}>Look for duplicates in</div>
+            <div class={styles.fieldDescription}>
+              Across all windows also catches the same page open in another window.
+              The oldest copy is the one kept, so this can close or focus a tab in
+              a window you are not currently looking at.
+            </div>
+          </div>
+          <select
+            class={styles.select}
+            value={settings.dedupScope}
+            onChange={(e) => onUpdate({ dedupScope: (e.target as HTMLSelectElement).value as Settings['dedupScope'] })}
+          >
+            <option value="window">This window only</option>
+            <option value="all-windows">All windows</option>
+          </select>
+        </div>
+
+        <div class={styles.field}>
+          <div>
             <div class={styles.fieldLabel}>Strip URL fragments</div>
             <div class={styles.fieldDescription}>Ignore #hash when comparing URLs</div>
           </div>

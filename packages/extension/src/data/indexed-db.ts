@@ -22,7 +22,16 @@ export class TabzenDB {
           store.createIndex('timestamp', 'timestamp');
         }
       };
-      request.onsuccess = () => { this.db = request.result; resolve(); };
+      request.onsuccess = () => {
+        this.db = request.result;
+        // Another connection upgrading the schema would be blocked while this
+        // one holds the database open. Step aside so the upgrade can proceed.
+        this.db.onversionchange = () => {
+          this.db?.close();
+          this.db = null;
+        };
+        resolve();
+      };
       request.onerror = () => reject(request.error);
     });
   }

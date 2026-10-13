@@ -1,15 +1,30 @@
+import { useCommands, formatShortcut } from '@/hooks/use-commands';
 import styles from '../App.module.css';
 
-const SHORTCUTS = [
-  { command: 'Open Tabzen popup', key: 'Ctrl+Shift+E', mac: 'Cmd+Shift+E' },
-  { command: 'Search tabs', key: 'Ctrl+Shift+K', mac: 'Cmd+Shift+K' },
-  { command: 'Clean up tabs', key: 'Ctrl+Shift+U', mac: 'Cmd+Shift+U' },
-  { command: 'Save current session', key: 'Ctrl+Shift+S', mac: 'Cmd+Shift+S' },
+// Chrome reports commands in manifest order and gives no grouping of its own.
+// Order them by how often they get reached for instead.
+const DISPLAY_ORDER = [
+  'previous-tab',
+  '_execute_action',
+  'search',
+  'clean-up',
+  'save-session',
 ];
 
-const isMac = typeof navigator !== 'undefined' && /Mac/.test(navigator.platform);
+const HINTS: Record<string, string> = {
+  'previous-tab': 'Press again to come straight back — it toggles between your last two tabs in this window.',
+  'save-session': 'Chrome allows only four default shortcuts per extension, so this one ships unbound. Assign it below if you use it often.',
+};
+
+function rank(name: string): number {
+  const index = DISPLAY_ORDER.indexOf(name);
+  return index === -1 ? DISPLAY_ORDER.length : index;
+}
 
 export function KeyboardShortcutsSection() {
+  const { commands } = useCommands();
+  const sorted = [...commands].sort((a, b) => rank(a.name) - rank(b.name));
+
   return (
     <div>
       <h2 class={styles.pageTitle}>Keyboard Shortcuts</h2>
@@ -23,27 +38,39 @@ export function KeyboardShortcutsSection() {
             </tr>
           </thead>
           <tbody>
-            {SHORTCUTS.map(s => (
-              <tr key={s.command}>
-                <td>{s.command}</td>
-                <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{isMac ? s.mac : s.key}</td>
+            {sorted.map(c => (
+              <tr key={c.name}>
+                <td>
+                  {c.description || c.name}
+                  {HINTS[c.name] && (
+                    <div class={styles.fieldDescription}>{HINTS[c.name]}</div>
+                  )}
+                </td>
+                <td
+                  style={{
+                    fontFamily: 'monospace',
+                    fontSize: 11,
+                    whiteSpace: 'nowrap',
+                    opacity: c.shortcut ? 1 : 0.5,
+                  }}
+                >
+                  {formatShortcut(c.shortcut)}
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
 
         <div style={{ marginTop: 16 }}>
-          <div class={styles.fieldDescription}>
-            To customize shortcuts, visit{' '}
-            <a
-              href="chrome://extensions/shortcuts"
-              onClick={(e) => {
-                e.preventDefault();
-                chrome.tabs.create({ url: 'chrome://extensions/shortcuts' });
-              }}
-            >
-              chrome://extensions/shortcuts
-            </a>
+          <button
+            class={styles.button}
+            onClick={() => chrome.tabs.create({ url: 'chrome://extensions/shortcuts' })}
+          >
+            Change shortcuts
+          </button>
+          <div class={styles.fieldDescription} style={{ marginTop: 8 }}>
+            Chrome keeps keyboard shortcuts under its own control, so rebinding happens
+            on its shortcuts page. Any change you make there shows up here automatically.
           </div>
         </div>
       </div>

@@ -1,8 +1,8 @@
 import type { MessageBus } from '../message-bus';
-import type { Workspace, Settings } from '@/data/types';
-import { LocalStorage, SyncStorage } from '@/data/storage';
+import type { Workspace } from '@/data/types';
+import { LocalStorage } from '@/data/storage';
+import { getSettings, updateSettings } from '@/data/settings';
 import {
-  DEFAULT_SETTINGS,
   DEFAULT_WORKSPACE_SETTINGS,
   STORAGE_KEYS,
   createDefaultWorkspace,
@@ -20,10 +20,6 @@ async function getWorkspaces(): Promise<Workspace[]> {
     return [defaultWs];
   }
   return workspaces;
-}
-
-async function getSettings(): Promise<Settings> {
-  return SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
 }
 
 async function getActiveWorkspace(): Promise<Workspace> {
@@ -80,13 +76,11 @@ async function deleteWorkspace(workspaceId: string): Promise<void> {
   await LocalStorage.set(STORAGE_KEYS.WORKSPACES, workspaces);
 
   // If the deleted workspace was active, switch to the first remaining one
-  const settings = await getSettings();
-  if (settings.activeWorkspaceId === workspaceId) {
-    await SyncStorage.set(STORAGE_KEYS.SETTINGS, {
-      ...settings,
-      activeWorkspaceId: workspaces[0].id,
-    });
-  }
+  await updateSettings(settings =>
+    settings.activeWorkspaceId === workspaceId
+      ? { ...settings, activeWorkspaceId: workspaces[0].id }
+      : settings,
+  );
 }
 
 async function switchWorkspace(
@@ -104,10 +98,7 @@ async function switchWorkspace(
   const settings = await getSettings();
 
   // Update active workspace ID
-  await SyncStorage.set(STORAGE_KEYS.SETTINGS, {
-    ...settings,
-    activeWorkspaceId: workspaceId,
-  });
+  await updateSettings(current => ({ ...current, activeWorkspaceId: workspaceId }));
 
   if (fullSwitch) {
     // Full switch: save current window's association to old workspace,

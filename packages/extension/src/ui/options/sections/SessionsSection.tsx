@@ -46,24 +46,8 @@ export function SessionsSection({ settings, onUpdate }: Props) {
 
         <div class={styles.field}>
           <div>
-            <div class={styles.fieldLabel}>Countdown timer (seconds)</div>
-            <div class={styles.fieldDescription}>Seconds to wait before auto-saving on close</div>
-          </div>
-          <input
-            type="number"
-            class={styles.input}
-            style={{ width: 80 }}
-            min={0}
-            max={120}
-            value={settings.autoSaveCountdown}
-            onChange={(e) => onUpdate({ autoSaveCountdown: parseInt((e.target as HTMLInputElement).value, 10) || 0 })}
-          />
-        </div>
-
-        <div class={styles.field}>
-          <div>
             <div class={styles.fieldLabel}>Save on close</div>
-            <div class={styles.fieldDescription}>Automatically save session when closing the browser</div>
+            <div class={styles.fieldDescription}>Automatically save a session when a window with 2+ tabs is closed</div>
           </div>
           <input
             type="checkbox"
@@ -76,7 +60,7 @@ export function SessionsSection({ settings, onUpdate }: Props) {
         <div class={styles.field}>
           <div>
             <div class={styles.fieldLabel}>Silent mode</div>
-            <div class={styles.fieldDescription}>Skip confirmation when auto-saving</div>
+            <div class={styles.fieldDescription}>Don't show a notification when sessions auto-save</div>
           </div>
           <input
             type="checkbox"

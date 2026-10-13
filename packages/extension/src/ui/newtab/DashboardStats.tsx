@@ -13,17 +13,18 @@ interface DashboardStatsProps {
 export function DashboardStats({ stats }: DashboardStatsProps) {
   if (!stats) return null;
 
-  const maxDomainCount = stats.topDomains.length > 0
-    ? Math.max(...stats.topDomains.map(d => d.count))
-    : 1;
+  const maxDomainCount = Math.max(1, ...stats.topDomains.map(d => d.count));
 
   return (
     <div>
-      <div class={styles.sectionLabel}>This week</div>
       <div class={styles.grid}>
         <div class={styles.stat}>
           <div class={styles.statValue}>{stats.tabsOpened}</div>
-          <div class={styles.statLabel}>tabs open</div>
+          <div class={styles.statLabel}>tabs opened</div>
+        </div>
+        <div class={styles.stat}>
+          <div class={styles.statValue}>{stats.peakTabCount}</div>
+          <div class={styles.statLabel}>peak tabs</div>
         </div>
         <div class={styles.stat}>
           <div class={styles.statValue}>{stats.duplicatesBlocked}</div>
@@ -31,7 +32,7 @@ export function DashboardStats({ stats }: DashboardStatsProps) {
         </div>
         <div class={styles.stat}>
           <div class={styles.statValue}>{stats.sessionsUsed}</div>
-          <div class={styles.statLabel}>sessions saved</div>
+          <div class={styles.statLabel}>sessions used</div>
         </div>
       </div>
 

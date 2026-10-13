@@ -1,4 +1,4 @@
-function createStorageWrapper(area: chrome.storage.SyncStorageArea | chrome.storage.LocalStorageArea) {
+function createStorageWrapper(area: chrome.storage.StorageArea) {
   return {
     async get<T>(key: string, defaultValue: T): Promise<T> {
       try {
@@ -38,3 +38,5 @@ function createStorageWrapper(area: chrome.storage.SyncStorageArea | chrome.stor
 
 export const SyncStorage = createStorageWrapper(chrome.storage.sync);
 export const LocalStorage = createStorageWrapper(chrome.storage.local);
+// Survives service-worker restarts, cleared when the browser session ends
+export const SessionStorage = createStorageWrapper(chrome.storage.session);

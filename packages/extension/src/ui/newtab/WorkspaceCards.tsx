@@ -4,8 +4,7 @@ export interface WorkspaceCardData {
   id: string;
   name: string;
   icon: string;
-  tabCount: number;
-  groupCount: number;
+  ruleCount: number;
 }
 
 interface WorkspaceCardsProps {
@@ -32,8 +31,7 @@ export function WorkspaceCards({ workspaces, activeId, onSelect }: WorkspaceCard
             {ws.name}
           </div>
           <div class={styles.cardStats}>
-            {ws.tabCount} {ws.tabCount === 1 ? 'tab' : 'tabs'},
-            {' '}{ws.groupCount} {ws.groupCount === 1 ? 'group' : 'groups'}
+            {ws.ruleCount} {ws.ruleCount === 1 ? 'rule' : 'rules'}
           </div>
         </div>
       ))}

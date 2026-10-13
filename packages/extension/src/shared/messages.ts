@@ -14,6 +14,7 @@ interface RestoreSessionTabsRequest { action: 'restoreSessionTabs'; sessionId: s
 interface DeleteSessionRequest { action: 'deleteSession'; sessionId: string; }
 interface RenameSessionRequest { action: 'renameSession'; sessionId: string; name: string; }
 interface GetSessionsRequest { action: 'getSessions'; }
+interface GetRecentSessionsRequest { action: 'getRecentSessions'; limit: number; }
 interface GetSessionRequest { action: 'getSession'; sessionId: string; }
 interface ApplyRulesRequest { action: 'applyRules'; windowId: number; }
 interface CleanUpRequest { action: 'cleanUp'; windowId: number; }
@@ -30,11 +31,12 @@ interface ConfigureAutoSaveRequest { action: 'configureAutoSave'; }
 interface SearchTabsRequest { action: 'searchTabs'; query: string; scope: 'tabs' | 'sessions' | 'all'; }
 interface PingRequest { action: 'ping'; }
 interface GetSuggestedRulesRequest { action: 'getSuggestedRules'; windowId: number; }
+interface SwitchToPreviousTabRequest { action: 'switchToPreviousTab'; windowId: number; }
 
 // Analytics messages
 interface GetAnalyticsRequest { action: 'getAnalytics'; from: number; to: number; }
 interface GetDashboardStatsRequest { action: 'getDashboardStats'; range: AnalyticsTimeRange; }
-interface IncrementAnalyticsCounterRequest { action: 'incrementAnalyticsCounter'; metric: 'duplicatesBlocked' | 'sessionsUsed'; amount?: number; }
+interface IncrementAnalyticsCounterRequest { action: 'incrementAnalyticsCounter'; metric: 'duplicatesBlocked' | 'sessionsUsed' | 'tabsOpened'; amount?: number; }
 interface TakeAnalyticsSnapshotRequest { action: 'takeAnalyticsSnapshot'; }
 
 // Rule pack messages
@@ -54,11 +56,12 @@ export type MessageRequest =
   | SortTabsRequest | RemoveDuplicatesRequest | SortGroupsRequest | CollapseAllRequest
   | SaveSessionRequest | RestoreSessionRequest | RestoreSessionTabsRequest
   | DeleteSessionRequest | RenameSessionRequest | GetSessionsRequest | GetSessionRequest
+  | GetRecentSessionsRequest
   | ApplyRulesRequest | CleanUpRequest | GetWindowInfoRequest | GetSettingsRequest
   | UpdateSettingsRequest | GetWorkspacesRequest | GetActiveWorkspaceRequest
   | CreateWorkspaceRequest | UpdateWorkspaceRequest | DeleteWorkspaceRequest
   | SwitchWorkspaceRequest | ConfigureAutoSaveRequest | SearchTabsRequest
-  | PingRequest | GetSuggestedRulesRequest
+  | PingRequest | GetSuggestedRulesRequest | SwitchToPreviousTabRequest
   | GetAnalyticsRequest | GetDashboardStatsRequest | IncrementAnalyticsCounterRequest
   | TakeAnalyticsSnapshotRequest
   | GetBuiltInPacksRequest | ImportRulePackRequest | ExportRulesRequest

@@ -33,21 +33,6 @@ export function PrivacySection({ settings, onUpdate }: Props) {
       <h2 class={styles.pageTitle}>Privacy</h2>
 
       <div class={styles.sectionBlock}>
-        <div class={styles.field}>
-          <div>
-            <div class={styles.fieldLabel}>Telemetry</div>
-            <div class={styles.fieldDescription}>Send anonymous usage data to help improve Tabzen</div>
-          </div>
-          <input
-            type="checkbox"
-            class={styles.checkbox}
-            checked={settings.telemetryEnabled}
-            onChange={(e) => onUpdate({ telemetryEnabled: (e.target as HTMLInputElement).checked })}
-          />
-        </div>
-      </div>
-
-      <div class={styles.sectionBlock}>
         <div class={styles.sectionLabel}>Data Management</div>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
