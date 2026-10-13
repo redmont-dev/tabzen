@@ -1,8 +1,9 @@
 import { useState, useCallback, useEffect } from 'preact/hooks';
 import { sendMessage } from '@/hooks/use-message';
 import { useKeyboardNav } from '@/hooks/use-keyboard';
-import type { Settings, Session, Workspace } from '@/data/types';
-import { DEFAULT_SETTINGS } from '@/shared/constants';
+import { useCommands, shortcutFor, formatShortcut } from '@/hooks/use-commands';
+import type { Settings, Session, Workspace, RecentSessions } from '@/data/types';
+import { DEFAULT_SETTINGS, POPUP_RECENT_SESSIONS } from '@/shared/constants';
 import { SearchBar } from '../components/SearchBar';
 import { SearchResults, type SearchResultItem } from '../components/SearchResults';
 import { ToastContainer, showToast } from '../components/Toast';
@@ -19,9 +20,17 @@ export function App() {
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [sessionTotal, setSessionTotal] = useState(0);
   const [sessionsExpanded, setSessionsExpanded] = useState(false);
   const [workspaceName, setWorkspaceName] = useState('Default');
+  const { commands } = useCommands();
   const showResults = query.length > 0 && results.length > 0;
+
+  // Hints come from Chrome so they match the user's real bindings and platform
+  const hintFor = (command: string): string | undefined => {
+    const shortcut = shortcutFor(commands, command);
+    return shortcut ? formatShortcut(shortcut) : undefined;
+  };
 
   // Fetch initial state
   useEffect(() => {
@@ -44,9 +53,13 @@ export function App() {
         setSettings(settingsRes.data);
       }
 
-      const sessRes = await sendMessage<Session[]>({ action: 'getSessions' });
+      const sessRes = await sendMessage<RecentSessions>({
+        action: 'getRecentSessions',
+        limit: POPUP_RECENT_SESSIONS,
+      });
       if (sessRes.ok && sessRes.data) {
-        setSessions(sessRes.data.sort((a, b) => b.createdAt - a.createdAt));
+        setSessions(sessRes.data.sessions);
+        setSessionTotal(sessRes.data.total);
       }
 
       const wsRes = await sendMessage<Workspace>({ action: 'getActiveWorkspace' });
@@ -112,9 +125,13 @@ export function App() {
     await sendMessage({ action: 'saveSession', windowId });
     showToast('Session saved');
     // Reload sessions
-    const sessRes = await sendMessage<Session[]>({ action: 'getSessions' });
+    const sessRes = await sendMessage<RecentSessions>({
+      action: 'getRecentSessions',
+      limit: POPUP_RECENT_SESSIONS,
+    });
     if (sessRes.ok && sessRes.data) {
-      setSessions(sessRes.data.sort((a, b) => b.createdAt - a.createdAt));
+      setSessions(sessRes.data.sessions);
+      setSessionTotal(sessRes.data.total);
     }
   }, [windowId]);
 
@@ -125,6 +142,16 @@ export function App() {
     showToast(removed > 0 ? `Removed ${removed} duplicate${removed !== 1 ? 's' : ''}` : 'No duplicates found');
     await refreshCounts();
   }, [windowId, refreshCounts]);
+
+  const handlePreviousTab = useCallback(async () => {
+    if (!windowId) return;
+    const res = await sendMessage<{ switched: boolean }>({ action: 'switchToPreviousTab', windowId });
+    if (res.ok && res.data?.switched) {
+      window.close();
+    } else {
+      showToast('No previous tab yet');
+    }
+  }, [windowId]);
 
   const handleCollapseAll = useCallback(async () => {
     if (!windowId) return;
@@ -199,8 +226,9 @@ export function App() {
   });
 
   const quickActions = [
-    { label: 'Clean up', hint: '\u2318\u21E7U', onClick: handleCleanUp },
-    { label: 'Save session', hint: '\u2318\u21E7S', onClick: handleSaveSession },
+    { label: 'Previous tab', hint: hintFor('previous-tab'), onClick: handlePreviousTab },
+    { label: 'Clean up', hint: hintFor('clean-up'), onClick: handleCleanUp },
+    { label: 'Save session', hint: hintFor('save-session'), onClick: handleSaveSession },
   ];
 
   const sortActions = [
@@ -215,7 +243,7 @@ export function App() {
     { label: 'Collapse all groups', onClick: handleCollapseAll },
   ];
 
-  const recentSessions = sessions.slice(0, 5);
+  const recentSessions = sessions;
 
   return (
     <div class={styles.popup}>
@@ -230,7 +258,7 @@ export function App() {
         <SearchBar
           value={query}
           onChange={handleSearch}
-          shortcutHint="&#8984;&#8679;K"
+          shortcutHint={hintFor('search')}
         />
       </div>
 
@@ -261,7 +289,7 @@ export function App() {
           onClick={() => setSessionsExpanded(!sessionsExpanded)}
         >
           <span class={styles.sectionHeader} style={{ marginBottom: 0 }}>Sessions</span>
-          <span class={styles.sessionsBadge}>{sessions.length}</span>
+          <span class={styles.sessionsBadge}>{sessionTotal}</span>
         </button>
         {sessionsExpanded && (
           <div class={styles.sessionsList}>

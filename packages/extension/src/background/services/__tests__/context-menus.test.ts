@@ -5,7 +5,10 @@ import {
   createMenuItems,
   handleMenuClick,
   registerContextMenus,
+  refreshGroupSubmenu,
+  GROUP_MENU_PREFIX,
 } from '../context-menus';
+import { GROUP_MENU_IDS_KEY } from '@/shared/constants';
 import { registerTabManager } from '../tab-manager';
 import { registerSearchIndex } from '../search-index';
 
@@ -209,6 +212,67 @@ describe('ContextMenus', () => {
 
       // Should not throw or call any chrome APIs
       expect(chrome.tabs.group).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('move-to-group submenu', () => {
+    beforeEach(async () => {
+      const { storageSessionData } = await import('../../../../tests/setup');
+      for (const k of Object.keys(storageSessionData)) delete storageSessionData[k];
+      vi.mocked(chrome.windows.getLastFocused).mockImplementation(async () => ({ id: 1 } as chrome.windows.Window));
+    });
+
+    it('builds one item per group in the focused window', async () => {
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
+        { id: 10, title: 'Work', color: 'blue', collapsed: false, windowId: 1 },
+        { id: 20, title: 'Reading', color: 'green', collapsed: false, windowId: 1 },
+      ] as chrome.tabGroups.TabGroup[]));
+
+      await refreshGroupSubmenu();
+
+      expect(chrome.contextMenus.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: `${GROUP_MENU_PREFIX}10`,
+          title: 'Work',
+          parentId: MENU_IDS.MOVE_TO_GROUP,
+        }),
+      );
+      expect(chrome.contextMenus.create).toHaveBeenCalledWith(
+        expect.objectContaining({ id: `${GROUP_MENU_PREFIX}20`, title: 'Reading' }),
+      );
+    });
+
+    it('labels an untitled group by its color instead of leaving it blank', async () => {
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
+        { id: 10, title: '', color: 'cyan', collapsed: false, windowId: 1 },
+      ] as chrome.tabGroups.TabGroup[]));
+
+      await refreshGroupSubmenu();
+
+      expect(chrome.contextMenus.create).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Untitled (cyan)' }),
+      );
+    });
+
+    it('removes the previous items so rebuilds do not stack duplicates', async () => {
+      const { storageSessionData } = await import('../../../../tests/setup');
+      storageSessionData[GROUP_MENU_IDS_KEY] = [`${GROUP_MENU_PREFIX}99`];
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => []);
+
+      await refreshGroupSubmenu();
+
+      expect(chrome.contextMenus.remove).toHaveBeenCalledWith(`${GROUP_MENU_PREFIX}99`);
+      expect(storageSessionData[GROUP_MENU_IDS_KEY]).toEqual([]);
+    });
+
+    it('moves the tab into the group the clicked item names', async () => {
+      await handleMenuClick(
+        bus,
+        { menuItemId: `${GROUP_MENU_PREFIX}42` } as chrome.contextMenus.OnClickData,
+        { id: 7, windowId: 1 } as chrome.tabs.Tab,
+      );
+
+      expect(chrome.tabs.group).toHaveBeenCalledWith({ tabIds: [7], groupId: 42 });
     });
   });
 });

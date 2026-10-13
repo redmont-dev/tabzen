@@ -194,9 +194,13 @@ async function getDashboardStats(
 // Exported for testing
 export { takeSnapshot, pruneOldData, getDashboardStats, resetCounters };
 
-export function registerAnalyticsCollector(bus: MessageBus, existingDb?: TabzenDB): { db: TabzenDB; ready: Promise<void> } {
+export function registerAnalyticsCollector(
+  bus: MessageBus,
+  existingDb?: TabzenDB,
+  existingReady?: Promise<void>,
+): { db: TabzenDB; ready: Promise<void> } {
   const db = existingDb ?? new TabzenDB();
-  const dbReady: Promise<void> = existingDb ? Promise.resolve() : db.open();
+  const dbReady: Promise<void> = existingReady ?? (existingDb ? Promise.resolve() : db.open());
   const ready = dbReady.then(() => pruneOldData(db));
   ready.catch(err => console.error('AnalyticsCollector init failed:', err));
 

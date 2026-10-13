@@ -28,8 +28,8 @@ describe('TabManager', () => {
       });
 
       expect(result.ok).toBe(true);
-      // Apple (id:2) should move to index 0
-      expect(chrome.tabs.move).toHaveBeenCalledWith(2, { index: 0 });
+      // Apple, Banana, Cherry — moved as one block so no index goes stale
+      expect(chrome.tabs.move).toHaveBeenCalledWith([2, 1, 3], { index: 0 });
     });
 
     it('sorts tabs by URL Z-A', async () => {
@@ -47,8 +47,8 @@ describe('TabManager', () => {
       });
 
       expect(result.ok).toBe(true);
-      // c.com (id:2) should be first
-      expect(chrome.tabs.move).toHaveBeenCalledWith(2, { index: 0 });
+      // c.com, b.com, a.com descending — one move for the whole run
+      expect(chrome.tabs.move).toHaveBeenCalledWith([2, 3, 1], { index: 0 });
     });
 
     it('sorts tabs within a specific group only', async () => {
@@ -135,10 +135,138 @@ describe('TabManager', () => {
         groupId: 10,
       });
 
-      // Important (id:2) should be moved first (priority), then Apple, then Banana
-      const moveCalls = vi.mocked(chrome.tabs.move).mock.calls;
-      const movedIds = moveCalls.map(c => c[0]);
-      expect(movedIds[0]).toBe(2); // priority tab first
+      // Important (id:2) leads on priority, then Apple (3), then Banana (1)
+      expect(chrome.tabs.move).toHaveBeenCalledWith([2, 3, 1], { index: 0 });
+    });
+  });
+
+  describe('sortGroups', () => {
+    it('moves each group as one block, in sorted order', async () => {
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
+        { id: 20, title: 'Zebra', color: 'red', collapsed: false, windowId: 1 },
+        { id: 10, title: 'Alpha', color: 'blue', collapsed: false, windowId: 1 },
+      ] as chrome.tabGroups.TabGroup[]));
+      vi.mocked(chrome.tabs.query).mockImplementation(async (info: chrome.tabs.QueryInfo) => {
+        if (info.pinned) return [];
+        if (info.groupId === 10) {
+          return [{ id: 1, groupId: 10 }, { id: 2, groupId: 10 }] as chrome.tabs.Tab[];
+        }
+        if (info.groupId === 20) return [{ id: 3, groupId: 20 }] as chrome.tabs.Tab[];
+        return [];
+      });
+
+      const result = await bus.dispatch({ action: 'sortGroups', windowId: 1, mode: 'name' });
+
+      expect(result.ok).toBe(true);
+      // Alpha first at index 0, Zebra after it at index 2
+      expect(chrome.tabs.move).toHaveBeenNthCalledWith(1, [1, 2], { index: 0 });
+      expect(chrome.tabs.move).toHaveBeenNthCalledWith(2, [3], { index: 2 });
+    });
+
+    it('recreates a group Chrome destroyed mid-move, keeping its title and color', async () => {
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
+        { id: 10, title: 'Work', color: 'blue', collapsed: true, windowId: 1 },
+      ] as chrome.tabGroups.TabGroup[]));
+      vi.mocked(chrome.tabs.query).mockImplementation(async (info: chrome.tabs.QueryInfo) => {
+        if (info.pinned) return [];
+        if (info.groupId === 10) return [{ id: 1, groupId: 10 }] as chrome.tabs.Tab[];
+        return [];
+      });
+      // Emptying the group deletes it, so re-grouping by the old id fails
+      vi.mocked(chrome.tabs.group)
+        .mockImplementationOnce(async () => { throw new Error('No group with id: 10'); })
+        .mockImplementationOnce(async () => 99);
+
+      const result = await bus.dispatch({ action: 'sortGroups', windowId: 1, mode: 'name' });
+
+      expect(result.ok).toBe(true);
+      expect(chrome.tabGroups.update).toHaveBeenCalledWith(99, {
+        title: 'Work',
+        color: 'blue',
+        collapsed: true,
+      });
+    });
+  });
+
+  describe('duplicate scope', () => {
+    async function setScope(dedupScope: 'window' | 'all-windows') {
+      const { storageSyncData } = await import('../../../../tests/setup');
+      storageSyncData['settings'] = { ...DEFAULT_SETTINGS, dedupScope };
+    }
+
+    /** Two windows, each holding the same URL. */
+    function twoWindowsSharingAUrl() {
+      const tabs = [
+        { id: 1, url: 'https://a.com', windowId: 1, pinned: false },
+        { id: 2, url: 'https://a.com', windowId: 2, pinned: false },
+      ] as chrome.tabs.Tab[];
+      vi.mocked(chrome.tabs.query).mockImplementation(async (info: chrome.tabs.QueryInfo) =>
+        info.windowId === undefined ? tabs : tabs.filter(t => t.windowId === info.windowId),
+      );
+    }
+
+    it('leaves another window alone by default', async () => {
+      await setScope('window');
+      twoWindowsSharingAUrl();
+
+      const result = await bus.dispatch({ action: 'removeDuplicates', windowId: 1 });
+
+      expect(result.data).toEqual({ removed: 0 });
+      expect(chrome.tabs.remove).not.toHaveBeenCalled();
+    });
+
+    it('closes the newer copy in another window when scope is all-windows', async () => {
+      await setScope('all-windows');
+      twoWindowsSharingAUrl();
+
+      const result = await bus.dispatch({ action: 'removeDuplicates', windowId: 1 });
+
+      expect(result.data).toEqual({ removed: 1 });
+      // First encountered wins, so the window-1 copy survives
+      expect(chrome.tabs.remove).toHaveBeenCalledWith(2);
+      expect(chrome.tabs.remove).not.toHaveBeenCalledWith(1);
+    });
+
+    it('still refuses to close a pinned duplicate across windows', async () => {
+      await setScope('all-windows');
+      const tabs = [
+        { id: 1, url: 'https://a.com', windowId: 1, pinned: false },
+        { id: 2, url: 'https://a.com', windowId: 2, pinned: true },
+      ] as chrome.tabs.Tab[];
+      vi.mocked(chrome.tabs.query).mockImplementation(async (info: chrome.tabs.QueryInfo) =>
+        info.windowId === undefined ? tabs : tabs.filter(t => t.windowId === info.windowId),
+      );
+
+      const result = await bus.dispatch({ action: 'removeDuplicates', windowId: 1 });
+
+      expect(result.data).toEqual({ removed: 0 });
+      expect(chrome.tabs.remove).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('cleanUp', () => {
+    it('moves ungrouped tabs to the end in one call', async () => {
+      const { storageSyncData } = await import('../../../../tests/setup');
+      storageSyncData['settings'] = {
+        ...DEFAULT_SETTINGS,
+        cleanupSort: false,
+        cleanupGroup: false,
+        cleanupDedup: false,
+        cleanupSortGroups: false,
+        cleanupCollapse: false,
+      };
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
+        { id: 1, groupId: -1, pinned: true, index: 0 },
+        { id: 2, groupId: 5, pinned: false, index: 1 },
+        { id: 3, groupId: -1, pinned: false, index: 2 },
+        { id: 4, groupId: -1, pinned: false, index: 3 },
+      ] as chrome.tabs.Tab[]));
+
+      const result = await bus.dispatch({ action: 'cleanUp', windowId: 1 });
+
+      expect(result.ok).toBe(true);
+      // Unpinned + ungrouped only, sent to the end together
+      expect(chrome.tabs.move).toHaveBeenCalledWith([3, 4], { index: -1 });
     });
   });
 

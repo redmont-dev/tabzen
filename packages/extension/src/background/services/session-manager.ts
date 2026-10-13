@@ -1,14 +1,14 @@
 import type { MessageBus } from '../message-bus';
-import type { Session, SessionTab, SessionGroup, Settings, SessionSource } from '@/data/types';
+import type { Session, SessionTab, SessionGroup, SessionSource } from '@/data/types';
 import { TabzenDB } from '@/data/indexed-db';
-import { SyncStorage, SessionStorage } from '@/data/storage';
+import { SessionStorage } from '@/data/storage';
+import { getSettings } from '@/data/settings';
 import {
-  DEFAULT_SETTINGS,
-  STORAGE_KEYS,
   NON_RESTORABLE_PROTOCOLS,
   AUTO_SAVE_ALARM_NAME,
   WINDOW_SNAPSHOT_PREFIX,
   MIN_TABS_FOR_CLOSE_SAVE,
+  MAX_AUTO_SESSIONS,
 } from '@/shared/constants';
 import { backupSessionIfEnabled, deleteDriveFileIfEnabled } from './drive-sync';
 import { notify } from '../utils/notify';
@@ -33,10 +33,6 @@ function formatTimestamp(ts: number): string {
   const hours = String(d.getHours()).padStart(2, '0');
   const minutes = String(d.getMinutes()).padStart(2, '0');
   return `Session ${month}/${day} ${hours}:${minutes}`;
-}
-
-async function getSettings(): Promise<Settings> {
-  return SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
 }
 
 async function captureWindowSnapshot(windowId: number): Promise<WindowSnapshot> {
@@ -87,13 +83,95 @@ async function buildSession(
   };
 }
 
+/**
+ * A stable description of what a window contained: which tabs, in order,
+ * pinned or not, and under which group name.
+ *
+ * Group *ids* are deliberately not part of this. Chrome hands out fresh ids
+ * every restart, so including them would make two identical windows look
+ * different across a restart and defeat the whole comparison.
+ */
+function fingerprint(tabs: SessionTab[], groups: SessionGroup[]): string {
+  const titleById = new Map(groups.map(g => [g.id, g.title]));
+  return tabs
+    .map(t => {
+      const group = t.groupId !== null ? titleById.get(t.groupId) ?? '' : '';
+      return `${t.pinned ? 'p' : '-'}|${group}|${t.url}`;
+    })
+    .join('\n');
+}
+
+/** Automatic sessions, newest first. */
+function automaticSessions(sessions: Session[]): Session[] {
+  return sessions
+    .filter(s => s.source === 'auto' || s.source === 'close')
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+/**
+ * Keep only the newest MAX_AUTO_SESSIONS automatically-created sessions.
+ *
+ * Auto-save plus save-on-close adds sessions indefinitely, and nothing else
+ * ever removes them. Sessions the user saved by hand are left alone — those
+ * were a deliberate act and are not ours to discard.
+ */
+async function pruneAutoSessions(db: TabzenDB, known?: Session[]): Promise<void> {
+  const automatic = automaticSessions(known ?? (await db.getAllSessions()));
+
+  for (const stale of automatic.slice(MAX_AUTO_SESSIONS)) {
+    try {
+      if (stale.driveFileId) {
+        deleteDriveFileIfEnabled(stale.driveFileId).catch(err =>
+          console.warn('Drive file deletion failed:', err),
+        );
+      }
+      await db.deleteSession(stale.id);
+    } catch (err) {
+      console.warn(`Failed to prune session "${stale.id}":`, err);
+    }
+  }
+}
+
+/**
+ * Store an automatic snapshot, unless it is identical to the last one.
+ *
+ * An hourly schedule on an unattended machine writes the same tab set 24 times
+ * a day. Skipping the unchanged ones is what keeps the session list meaningful;
+ * the count cap is only a backstop behind it.
+ *
+ * Returns null when the snapshot was skipped.
+ */
+async function saveAutomaticSession(
+  db: TabzenDB,
+  snapshot: WindowSnapshot,
+  source: SessionSource,
+): Promise<Session | null> {
+  const existing = await db.getAllSessions();
+  const [latest] = automaticSessions(existing);
+
+  if (latest && fingerprint(latest.tabs, latest.groups) === fingerprint(snapshot.tabs, snapshot.groups)) {
+    return null;
+  }
+
+  const session = await buildSession(snapshot, undefined, source);
+  await db.putSession(session);
+  await pruneAutoSessions(db, [...existing, session]);
+  return session;
+}
+
 async function saveSession(
   db: TabzenDB,
   windowId: number,
   name?: string,
   source: SessionSource = 'manual',
-): Promise<Session> {
+): Promise<Session | null> {
   const snapshot = await captureWindowSnapshot(windowId);
+
+  // A manual save is an explicit request — always honour it, unchanged or not.
+  if (source !== 'manual') {
+    return saveAutomaticSession(db, snapshot, source);
+  }
+
   const session = await buildSession(snapshot, name, source);
   await db.putSession(session);
   return session;
@@ -308,8 +386,9 @@ async function saveClosedWindowSession(db: TabzenDB, windowId: number): Promise<
   if (!settings.autoSaveOnClose || !snapshot) return;
   if (snapshot.tabs.length < MIN_TABS_FOR_CLOSE_SAVE) return;
 
-  const session = await buildSession(snapshot, undefined, 'close');
-  await db.putSession(session);
+  const session = await saveAutomaticSession(db, snapshot, 'close');
+  if (!session) return; // Identical to the last automatic snapshot
+
   backupSessionIfEnabled(db, session).catch(err => console.warn('Drive backup failed:', err));
 
   if (!settings.autoSaveSkipConfirm) {
@@ -317,9 +396,13 @@ async function saveClosedWindowSession(db: TabzenDB, windowId: number): Promise<
   }
 }
 
-export function registerSessionManager(bus: MessageBus, existingDb?: TabzenDB): { db: TabzenDB; ready: Promise<void> } {
+export function registerSessionManager(
+  bus: MessageBus,
+  existingDb?: TabzenDB,
+  existingReady?: Promise<void>,
+): { db: TabzenDB; ready: Promise<void> } {
   const db = existingDb ?? new TabzenDB();
-  const ready: Promise<void> = existingDb ? Promise.resolve() : db.open();
+  const ready: Promise<void> = existingReady ?? (existingDb ? Promise.resolve() : db.open());
 
   // Reconcile the auto-save alarm and close-snapshots from persisted settings
   // on every SW start.
@@ -330,8 +413,11 @@ export function registerSessionManager(bus: MessageBus, existingDb?: TabzenDB): 
   bus.register('saveSession', async (req) => {
     await ready;
     const session = await saveSession(db, req.windowId, req.name, req.source);
-    // Best-effort backup to Drive (non-blocking)
-    backupSessionIfEnabled(db, session).catch(err => console.warn('Drive backup failed:', err));
+    if (session) {
+      // Best-effort backup to Drive (non-blocking)
+      backupSessionIfEnabled(db, session).catch(err => console.warn('Drive backup failed:', err));
+    }
+    // data is null when an automatic save was skipped as unchanged
     return { ok: true, data: session };
   });
 
@@ -339,6 +425,18 @@ export function registerSessionManager(bus: MessageBus, existingDb?: TabzenDB): 
     await ready;
     const sessions = await db.getAllSessions();
     return { ok: true, data: sessions };
+  });
+
+  // Preferred over getSessions for anything that renders a fixed number of
+  // rows: sessions are ~4KB each and cross the message boundary by structured
+  // clone, so returning the whole store to draw five of them is pure waste.
+  bus.register('getRecentSessions', async (req) => {
+    await ready;
+    const all = await db.getAllSessions();
+    const sessions = [...all]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .slice(0, Math.max(0, req.limit));
+    return { ok: true, data: { sessions, total: all.length } };
   });
 
   bus.register('getSession', async (req) => {
@@ -404,10 +502,13 @@ export function registerSessionManager(bus: MessageBus, existingDb?: TabzenDB): 
       const window = await chrome.windows.getLastFocused();
       if (window.id) {
         const session = await saveSession(db, window.id, undefined, 'auto');
-        backupSessionIfEnabled(db, session).catch(err => console.warn('Drive backup failed:', err));
-        const settings = await getSettings();
-        if (!settings.autoSaveSkipConfirm) {
-          notify('Session saved', `Auto-saved ${session.tabs.length} tabs as "${session.name}".`);
+        // Nothing changed since the last automatic save — stay quiet
+        if (session) {
+          backupSessionIfEnabled(db, session).catch(err => console.warn('Drive backup failed:', err));
+          const settings = await getSettings();
+          if (!settings.autoSaveSkipConfirm) {
+            notify('Session saved', `Auto-saved ${session.tabs.length} tabs as "${session.name}".`);
+          }
         }
       }
     } catch (err) {

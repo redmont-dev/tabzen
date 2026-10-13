@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { sendMessage } from './use-message';
+import { PORT_NAME } from '@/shared/constants';
 
 export interface TabInfo {
   id: number;
@@ -113,7 +114,7 @@ export function useTabs(): { state: WindowState | null; refresh: () => void; loa
     fetchWindowInfo();
 
     // Connect long-lived port for real-time updates
-    const port = chrome.runtime.connect({ name: 'tabzen-ui' });
+    const port = chrome.runtime.connect({ name: PORT_NAME });
 
     port.onMessage.addListener((message: {
       type: string;
@@ -125,6 +126,13 @@ export function useTabs(): { state: WindowState | null; refresh: () => void; loa
         setState(buildWindowState(message.windowId, message.tabs, message.groups));
       }
     });
+
+    // Tell the background which window this UI is showing. Without it the
+    // service worker would have to guess, and its guess is the last-focused
+    // window — wrong for any panel that is not in it.
+    chrome.windows.getCurrent().then(win => {
+      if (win.id !== undefined) port.postMessage({ type: 'subscribe', windowId: win.id });
+    }).catch(() => { /* window went away before we subscribed */ });
 
     return () => {
       try { port.disconnect(); } catch { /* port already disconnected */ }

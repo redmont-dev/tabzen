@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'preact/hooks';
 import { sendMessage } from '@/hooks/use-message';
+import { useKeyboardNav } from '@/hooks/use-keyboard';
+import { POPUP_RECENT_SESSIONS } from '@/shared/constants';
 import { SearchBar } from '../components/SearchBar';
 import { SearchResults, type SearchResultItem } from '../components/SearchResults';
 import { WorkspaceCards, type WorkspaceCardData } from './WorkspaceCards';
 import { SessionList } from './SessionList';
 import { DashboardStats } from './DashboardStats';
-import type { Settings, Session, Workspace, DashboardStats as DashboardStatsType } from '@/data/types';
+import type { Settings, Session, Workspace, RecentSessions, DashboardStats as DashboardStatsType } from '@/data/types';
 import styles from './App.module.css';
 
 const STATS_REFRESH_MS = 60_000;
@@ -63,9 +65,12 @@ export function App() {
       }
 
       // Load sessions
-      const sessResult = await sendMessage<Session[]>({ action: 'getSessions' });
+      const sessResult = await sendMessage<RecentSessions>({
+        action: 'getRecentSessions',
+        limit: POPUP_RECENT_SESSIONS,
+      });
       if (sessResult.ok && sessResult.data) {
-        setSessions(sessResult.data);
+        setSessions(sessResult.data.sessions);
       }
 
       await loadStats();
@@ -130,6 +135,21 @@ export function App() {
     }
   }, [switchToTab, handleRestore]);
 
+  useKeyboardNav({
+    itemCount: results.length,
+    selectedIndex,
+    onSelect: setSelectedIndex,
+    onConfirm: (index) => {
+      const r = results[index];
+      if (r) handleResultSelect(r);
+    },
+    onDismiss: () => {
+      setQuery('');
+      setResults([]);
+    },
+    enabled: showResults,
+  });
+
   const handleSelectWorkspace = useCallback(async (id: string) => {
     const win = await chrome.windows.getCurrent();
     if (!win.id) return;
@@ -160,7 +180,7 @@ export function App() {
     <div class={styles.page}>
       <div class={styles.header}>
         <span class={styles.wordmark}>Tabzen</span>
-        <a class={styles.settingsLink} href="chrome-extension://__MSG_@@extension_id__/options.html" target="_blank" rel="noopener">
+        <a class={styles.settingsLink} href={chrome.runtime.getURL('options.html')} target="_blank" rel="noopener">
           Settings
         </a>
       </div>

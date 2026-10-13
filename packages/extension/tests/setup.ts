@@ -68,6 +68,7 @@ const chrome = {
     onMoved: { addListener: vi.fn(), removeListener: vi.fn() },
     onAttached: { addListener: vi.fn(), removeListener: vi.fn() },
     onDetached: { addListener: vi.fn(), removeListener: vi.fn() },
+    onActivated: { addListener: vi.fn(), removeListener: vi.fn() },
   },
   tabGroups: {
     query: vi.fn(async () => []),
@@ -81,6 +82,7 @@ const chrome = {
     create: vi.fn(async () => ({ id: 2 })),
     getAll: vi.fn(async () => []),
     onRemoved: { addListener: vi.fn(), removeListener: vi.fn() },
+    onFocusChanged: { addListener: vi.fn(), removeListener: vi.fn() },
   },
   alarms: {
     // Stateful so create/get/clear behave like the real persistent alarm store,
@@ -103,7 +105,7 @@ const chrome = {
   contextMenus: {
     create: vi.fn(),
     update: vi.fn(),
-    remove: vi.fn(),
+    remove: vi.fn(async () => {}),
     removeAll: vi.fn(async () => {}),
     onClicked: { addListener: vi.fn(), removeListener: vi.fn() },
   },
@@ -115,6 +117,10 @@ const chrome = {
   identity: {
     getAuthToken: vi.fn(async () => ({ token: 'mock-token' })),
     removeCachedAuthToken: vi.fn(async () => {}),
+  },
+  commands: {
+    getAll: vi.fn(async () => []),
+    onCommand: { addListener: vi.fn(), removeListener: vi.fn() },
   },
   webNavigation: {
     onCreatedNavigationTarget: { addListener: vi.fn(), removeListener: vi.fn() },

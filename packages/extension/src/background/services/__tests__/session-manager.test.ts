@@ -7,7 +7,9 @@ import {
   STORAGE_KEYS,
   AUTO_SAVE_ALARM_NAME,
   WINDOW_SNAPSHOT_PREFIX,
+  MAX_AUTO_SESSIONS,
 } from '@/shared/constants';
+import type { RecentSessions } from '@/data/types';
 import { TabzenDB } from '@/data/indexed-db';
 import type { Session } from '@/data/types';
 
@@ -509,6 +511,214 @@ describe('SessionManager', () => {
       const session = result.data as Session;
       expect(session.tabs).toHaveLength(2);
       expect(session.tabs.every(t => t.url.startsWith('http'))).toBe(true);
+    });
+  });
+
+  describe('automatic session retention', () => {
+    /** A window whose tab list is unique to `n`, so snapshots differ. */
+    function windowWith(n: number) {
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
+        { id: 1, url: `https://a.com/${n}`, title: 'A', pinned: false, groupId: -1 },
+      ] as chrome.tabs.Tab[]));
+    }
+
+    function seedSession(overrides: Partial<Session>): Session {
+      return {
+        id: `seed-${Math.random().toString(36).slice(2, 10)}`,
+        name: 'seeded',
+        workspaceId: null,
+        createdAt: 0,
+        source: 'auto',
+        tabs: [{ url: 'https://seed.example', title: 'seed', pinned: false, groupId: null }],
+        groups: [],
+        driveFileId: null,
+        ...overrides,
+      };
+    }
+
+    it('prunes down to MAX_AUTO_SESSIONS once the cap is passed', async () => {
+      const db = new TabzenDB(`test-${Math.random().toString(36).slice(2, 10)}`);
+      await db.open();
+      const localBus = new MessageBus();
+      await registerSessionManager(localBus, db);
+
+      // Seed past the cap directly — saving them one at a time would be a
+      // round-trip per session against a 400-deep store.
+      for (let i = 0; i < MAX_AUTO_SESSIONS + 5; i++) {
+        await db.putSession(seedSession({ name: `auto-${i}`, createdAt: 1000 + i }));
+      }
+
+      windowWith(999);
+      await localBus.dispatch({ action: 'saveSession', windowId: 1, source: 'auto' });
+
+      const sessions = (await db.getAllSessions());
+      expect(sessions).toHaveLength(MAX_AUTO_SESSIONS);
+      // Oldest went first, newest survived
+      const names = sessions.map(x => x.name);
+      expect(names).not.toContain('auto-0');
+      expect(names).toContain(`auto-${MAX_AUTO_SESSIONS + 4}`);
+    });
+
+    it('never prunes sessions the user saved by hand', async () => {
+      const db = new TabzenDB(`test-${Math.random().toString(36).slice(2, 10)}`);
+      await db.open();
+      const localBus = new MessageBus();
+      await registerSessionManager(localBus, db);
+
+      await db.putSession(seedSession({
+        name: 'my important session', source: 'manual', createdAt: 1,
+      }));
+      for (let i = 0; i < MAX_AUTO_SESSIONS + 5; i++) {
+        await db.putSession(seedSession({ name: `auto-${i}`, createdAt: 1000 + i }));
+      }
+
+      windowWith(999);
+      await localBus.dispatch({ action: 'saveSession', windowId: 1, source: 'auto' });
+
+      const names = (await db.getAllSessions()).map(x => x.name);
+      expect(names).toContain('my important session');
+      expect(names.filter(n => n !== 'my important session')).toHaveLength(MAX_AUTO_SESSIONS);
+    });
+  });
+
+  describe('skipping unchanged automatic saves', () => {
+    function windowWith(urls: string[]) {
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => (
+        urls.map((url, i) => ({
+          id: i + 1, url, title: url, pinned: false, groupId: -1,
+        })) as chrome.tabs.Tab[]
+      ));
+    }
+
+    it('writes nothing when the tab set matches the last automatic save', async () => {
+      windowWith(['https://a.com', 'https://b.com']);
+
+      const first = await bus.dispatch({ action: 'saveSession', windowId: 1, source: 'auto' });
+      const second = await bus.dispatch({ action: 'saveSession', windowId: 1, source: 'auto' });
+
+      expect((first.data as Session).id).toBeTruthy();
+      expect(second.ok).toBe(true);
+      expect(second.data).toBeNull();
+
+      const all = await bus.dispatch({ action: 'getSessions' });
+      expect(all.data as Session[]).toHaveLength(1);
+    });
+
+    it('saves again once a tab changes', async () => {
+      windowWith(['https://a.com']);
+      await bus.dispatch({ action: 'saveSession', windowId: 1, source: 'auto' });
+
+      windowWith(['https://a.com', 'https://b.com']);
+      const second = await bus.dispatch({ action: 'saveSession', windowId: 1, source: 'auto' });
+
+      expect(second.data).not.toBeNull();
+      const all = await bus.dispatch({ action: 'getSessions' });
+      expect(all.data as Session[]).toHaveLength(2);
+    });
+
+    it('notices a reordering even when the same tabs are open', async () => {
+      windowWith(['https://a.com', 'https://b.com']);
+      await bus.dispatch({ action: 'saveSession', windowId: 1, source: 'auto' });
+
+      windowWith(['https://b.com', 'https://a.com']);
+      const second = await bus.dispatch({ action: 'saveSession', windowId: 1, source: 'auto' });
+
+      expect(second.data).not.toBeNull();
+    });
+
+    it('always honours a manual save, unchanged or not', async () => {
+      windowWith(['https://a.com']);
+      await bus.dispatch({ action: 'saveSession', windowId: 1, source: 'auto' });
+
+      const manual = await bus.dispatch({ action: 'saveSession', windowId: 1, name: 'mine' });
+
+      expect(manual.data).not.toBeNull();
+      const all = await bus.dispatch({ action: 'getSessions' });
+      expect(all.data as Session[]).toHaveLength(2);
+    });
+
+    it('compares by group name, so a restart renumbering group ids does not count as a change', async () => {
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
+        { id: 1, url: 'https://a.com', title: 'A', pinned: false, groupId: 7 },
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
+        { id: 7, title: 'Work', color: 'blue', collapsed: false, windowId: 1 },
+      ] as chrome.tabGroups.TabGroup[]));
+      await bus.dispatch({ action: 'saveSession', windowId: 1, source: 'auto' });
+
+      // Same window, same group, fresh ids after a browser restart
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
+        { id: 1, url: 'https://a.com', title: 'A', pinned: false, groupId: 91 },
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
+        { id: 91, title: 'Work', color: 'blue', collapsed: false, windowId: 1 },
+      ] as chrome.tabGroups.TabGroup[]));
+      const second = await bus.dispatch({ action: 'saveSession', windowId: 1, source: 'auto' });
+
+      expect(second.data).toBeNull();
+    });
+  });
+
+  describe('getRecentSessions', () => {
+    async function seed(db: TabzenDB, count: number) {
+      for (let i = 0; i < count; i++) {
+        await db.putSession({
+          id: `s${i}`, name: `session-${i}`, workspaceId: null,
+          createdAt: 1000 + i, source: 'auto',
+          tabs: [{ url: 'https://a.com', title: 'A', pinned: false, groupId: null }],
+          groups: [], driveFileId: null,
+        });
+      }
+    }
+
+    it('returns only the requested number, newest first', async () => {
+      const db = new TabzenDB(`test-${Math.random().toString(36).slice(2, 10)}`);
+      await db.open();
+      const localBus = new MessageBus();
+      await registerSessionManager(localBus, db);
+      await seed(db, 10);
+
+      const res = await localBus.dispatch({ action: 'getRecentSessions', limit: 3 });
+      const data = res.data as RecentSessions;
+
+      expect(data.sessions).toHaveLength(3);
+      expect(data.sessions.map(x => x.name)).toEqual(['session-9', 'session-8', 'session-7']);
+    });
+
+    it('reports the full count regardless of the page size', async () => {
+      const db = new TabzenDB(`test-${Math.random().toString(36).slice(2, 10)}`);
+      await db.open();
+      const localBus = new MessageBus();
+      await registerSessionManager(localBus, db);
+      await seed(db, 10);
+
+      const res = await localBus.dispatch({ action: 'getRecentSessions', limit: 3 });
+      expect((res.data as RecentSessions).total).toBe(10);
+    });
+
+    it('returns the count alone for limit 0, so a collapsed list costs nothing', async () => {
+      const db = new TabzenDB(`test-${Math.random().toString(36).slice(2, 10)}`);
+      await db.open();
+      const localBus = new MessageBus();
+      await registerSessionManager(localBus, db);
+      await seed(db, 10);
+
+      const res = await localBus.dispatch({ action: 'getRecentSessions', limit: 0 });
+      const data = res.data as RecentSessions;
+
+      expect(data.sessions).toEqual([]);
+      expect(data.total).toBe(10);
+    });
+
+    it('handles a limit larger than the store', async () => {
+      const db = new TabzenDB(`test-${Math.random().toString(36).slice(2, 10)}`);
+      await db.open();
+      const localBus = new MessageBus();
+      await registerSessionManager(localBus, db);
+      await seed(db, 2);
+
+      const res = await localBus.dispatch({ action: 'getRecentSessions', limit: 50 });
+      expect((res.data as RecentSessions).sessions).toHaveLength(2);
     });
   });
 });

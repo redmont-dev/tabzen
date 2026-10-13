@@ -1,12 +1,9 @@
 import type { MessageBus } from '../message-bus';
-import type { Settings, Workspace, GroupingRule, TabGroupColor } from '@/data/types';
-import { LocalStorage, SyncStorage } from '@/data/storage';
-import { DEFAULT_SETTINGS, STORAGE_KEYS } from '@/shared/constants';
+import type { Workspace, GroupingRule, TabGroupColor } from '@/data/types';
+import { LocalStorage } from '@/data/storage';
+import { getSettings } from '@/data/settings';
+import { STORAGE_KEYS } from '@/shared/constants';
 import { matchRules, extractDomain } from '../utils/rule-matcher';
-
-async function getSettings(): Promise<Settings> {
-  return SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
-}
 
 async function getActiveWorkspace(): Promise<Workspace | null> {
   const settings = await getSettings();
@@ -16,6 +13,24 @@ async function getActiveWorkspace(): Promise<Workspace | null> {
 
 // Debounce map: tabId -> { url, time }
 const recentAutoGroups = new Map<number, { url: string; time: number }>();
+
+/**
+ * Whether a group looks like one the rules own, rather than one the user made.
+ *
+ * Chrome exposes no provenance for a tab group, so ownership is inferred: a
+ * group whose title and color match some enabled rule is a group the rules
+ * would have produced, and rearranging it is fair game. Anything else — a group
+ * the user named "My tickets" — is theirs, and its tabs are left where they are.
+ *
+ * Without this, a hand-made group holding tabs that match a rule is emptied on
+ * every clean-up, and Chrome deletes a group as soon as its last tab leaves.
+ */
+function isRuleOwnedGroup(
+  group: chrome.tabGroups.TabGroup,
+  rules: GroupingRule[],
+): boolean {
+  return rules.some(r => r.groupName === (group.title ?? '') && r.color === group.color);
+}
 
 interface GroupTarget {
   groupName: string;
@@ -50,7 +65,6 @@ async function applyRules(windowId: number): Promise<void> {
 
     const key = `${matchedRule.groupName}::${matchedRule.color}`;
 
-    // Check if tab is already in the correct group
     if (tab.groupId !== undefined && tab.groupId !== -1) {
       const currentGroup = groupMap.get(tab.groupId);
       if (
@@ -59,6 +73,10 @@ async function applyRules(windowId: number): Promise<void> {
         currentGroup.color === matchedRule.color
       ) {
         continue; // Already correctly grouped
+      }
+      // The user put this tab in a group of their own — leave it there
+      if (currentGroup && !isRuleOwnedGroup(currentGroup, rules)) {
+        continue;
       }
     }
 
@@ -113,7 +131,6 @@ async function autoGroupTab(tab: chrome.tabs.Tab): Promise<void> {
   const matchedRule = matchRules(tab.url, rules);
   if (!matchedRule) return;
 
-  // Check if already in correct group
   if (tab.groupId !== undefined && tab.groupId !== -1) {
     const existingGroups = await chrome.tabGroups.query({ windowId: tab.windowId });
     const currentGroup = existingGroups.find(g => g.id === tab.groupId);
@@ -122,6 +139,10 @@ async function autoGroupTab(tab: chrome.tabs.Tab): Promise<void> {
       currentGroup.title === matchedRule.groupName &&
       currentGroup.color === matchedRule.color
     ) {
+      return; // Already correctly grouped
+    }
+    // The user put this tab in a group of their own — leave it there
+    if (currentGroup && !isRuleOwnedGroup(currentGroup, rules)) {
       return;
     }
   }

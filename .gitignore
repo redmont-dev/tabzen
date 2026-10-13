@@ -5,3 +5,4 @@ dist/
 
 # Local build artifacts
 tabzen-extension*.zip
+.idea/

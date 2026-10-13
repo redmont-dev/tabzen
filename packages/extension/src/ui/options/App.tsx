@@ -7,6 +7,7 @@ import { WorkspacesSection } from './sections/WorkspacesSection';
 import { GroupingRulesSection } from './sections/GroupingRulesSection';
 import { PriorityUrlsSection } from './sections/PriorityUrlsSection';
 import { SortingSection } from './sections/SortingSection';
+import { CleanUpSection } from './sections/CleanUpSection';
 import { DuplicatesSection } from './sections/DuplicatesSection';
 import { SessionsSection } from './sections/SessionsSection';
 import { SyncSection } from './sections/SyncSection';
@@ -19,7 +20,7 @@ import styles from './App.module.css';
 
 type Section =
   | 'general' | 'workspaces' | 'grouping-rules' | 'priority-urls'
-  | 'sorting' | 'duplicates' | 'sessions' | 'sync'
+  | 'sorting' | 'clean-up' | 'duplicates' | 'sessions' | 'sync'
   | 'keyboard-shortcuts' | 'analytics' | 'rule-packs' | 'privacy' | 'about';
 
 const NAV_ITEMS: { id: Section; label: string }[] = [
@@ -28,6 +29,7 @@ const NAV_ITEMS: { id: Section; label: string }[] = [
   { id: 'grouping-rules', label: 'Grouping Rules' },
   { id: 'priority-urls', label: 'Priority URLs' },
   { id: 'sorting', label: 'Sorting' },
+  { id: 'clean-up', label: 'Clean Up' },
   { id: 'duplicates', label: 'Duplicates' },
   { id: 'sessions', label: 'Sessions' },
   ...(DRIVE_SYNC_ENABLED ? [{ id: 'sync', label: 'Sync' } as const] : []),
@@ -80,6 +82,8 @@ export function App() {
         return <PriorityUrlsSection workspace={activeWorkspace} onRefresh={loadData} />;
       case 'sorting':
         return <SortingSection settings={settings} onUpdate={handleUpdateSettings} />;
+      case 'clean-up':
+        return <CleanUpSection settings={settings} onUpdate={handleUpdateSettings} />;
       case 'duplicates':
         return <DuplicatesSection settings={settings} onUpdate={handleUpdateSettings} />;
       case 'sessions':

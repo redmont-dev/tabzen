@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { MessageBus } from '../../message-bus';
 import { registerSearchIndex, type TabSearchResult } from '../search-index';
+import { SESSION_SEARCH_LIMIT } from '@/shared/constants';
 
 describe('SearchIndex', () => {
   let bus: MessageBus;
@@ -155,7 +156,10 @@ describe('SearchIndex', () => {
     ];
 
     beforeEach(() => {
-      bus.register('getSessions', async () => ({ ok: true, data: sessions }));
+      bus.register('getRecentSessions', async (req) => ({
+        ok: true,
+        data: { sessions: sessions.slice(0, req.limit), total: sessions.length },
+      }));
     });
 
     it('matches sessions by name for sessions scope', async () => {
@@ -191,6 +195,44 @@ describe('SearchIndex', () => {
       const result = await registerAndDispatch('vacation', 'tabs');
       expect(result.ok).toBe(true);
       expect(result.data).toHaveLength(0);
+    });
+  });
+
+  describe('session search bounds', () => {
+    it('asks for a bounded page of sessions rather than the whole store', async () => {
+      const seen: number[] = [];
+      bus.register('getRecentSessions', async (req) => {
+        seen.push(req.limit);
+        return { ok: true, data: { sessions: [], total: 5000 } };
+      });
+
+      await registerAndDispatch('anything', 'sessions');
+
+      expect(seen).toHaveLength(1);
+      expect(seen[0]).toBe(SESSION_SEARCH_LIMIT);
+    });
+
+    it('still matches on tab text after flattening', async () => {
+      bus.register('getRecentSessions', async () => ({
+        ok: true,
+        data: {
+          sessions: [{
+            id: 'sx',
+            name: 'Untitled',
+            workspaceId: null,
+            createdAt: 1,
+            source: 'manual' as const,
+            tabs: [{ url: 'https://example.com/x', title: 'Quarterly Budget', pinned: false, groupId: null }],
+            groups: [],
+            driveFileId: null,
+          }],
+          total: 1,
+        },
+      }));
+
+      const result = await registerAndDispatch('quarterly budget', 'sessions');
+
+      expect(result.data[0]).toMatchObject({ kind: 'session', sessionId: 'sx' });
     });
   });
 });

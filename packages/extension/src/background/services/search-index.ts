@@ -1,6 +1,7 @@
 import Fuse from 'fuse.js';
 import type { MessageBus } from '../message-bus';
-import type { Session } from '@/data/types';
+import type { RecentSessions } from '@/data/types';
+import { SESSION_SEARCH_LIMIT, SESSION_SEARCH_TABS_PER_SESSION } from '@/shared/constants';
 
 export interface TabSearchResult {
   kind: 'tab';
@@ -86,15 +87,32 @@ async function searchTabs(query: string): Promise<TabSearchResult[]> {
 async function searchSessions(bus: MessageBus, query: string): Promise<SessionSearchResult[]> {
   if (!query.trim()) return [];
 
-  const response = await bus.dispatch({ action: 'getSessions' });
-  if (!response.ok || !Array.isArray(response.data)) return [];
-  const sessions = response.data as Session[];
+  const response = await bus.dispatch({
+    action: 'getRecentSessions',
+    limit: SESSION_SEARCH_LIMIT,
+  });
+  if (!response.ok || !response.data) return [];
+  const { sessions } = response.data as RecentSessions;
 
-  const fuse = new Fuse(sessions, {
+  // Flatten each session's tabs into one string up front rather than letting
+  // Fuse walk the nested tabs array on every keystroke. A session can hold
+  // hundreds of tabs, and the nested-key traversal is what makes searching a
+  // large store crawl.
+  const items = sessions.map(session => ({
+    id: session.id,
+    name: session.name,
+    tabCount: session.tabs.length,
+    createdAt: session.createdAt,
+    tabText: session.tabs
+      .slice(0, SESSION_SEARCH_TABS_PER_SESSION)
+      .map(t => `${t.title} ${t.url}`)
+      .join(' '),
+  }));
+
+  const fuse = new Fuse(items, {
     keys: [
       { name: 'name', weight: 0.5 },
-      { name: 'tabs.title', weight: 0.3 },
-      { name: 'tabs.url', weight: 0.2 },
+      { name: 'tabText', weight: 0.5 },
     ],
     threshold: 0.3,
     ignoreLocation: true,
@@ -105,7 +123,7 @@ async function searchSessions(bus: MessageBus, query: string): Promise<SessionSe
     kind: 'session' as const,
     sessionId: r.item.id,
     name: r.item.name,
-    tabCount: r.item.tabs.length,
+    tabCount: r.item.tabCount,
     createdAt: r.item.createdAt,
   }));
 }

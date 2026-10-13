@@ -379,4 +379,99 @@ describe('RuleEngine', () => {
       expect(data[1].pattern).toBe('github.com');
     });
   });
+
+  describe('respecting hand-made groups', () => {
+    /** The user's real-world rule shape: one domain rule. */
+    async function withFreshdeskRule() {
+      const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
+      storageSyncData['settings'] = { activeWorkspaceId: 'default' };
+      storageLocalData['workspaces'] = [{
+        id: 'default', name: 'Default', icon: '',
+        rules: [{
+          id: 'r1', type: 'domain', pattern: 'acceptblue.freshdesk.com',
+          groupName: 'Freshdesk', color: 'cyan', enabled: true, source: 'user',
+        }],
+        priorityRules: [],
+        settings: { defaultSortBy: 'title', defaultSortOrder: 'asc', groupSortMode: 'name', collapseAfterSort: false, removeDupsOnSort: false },
+        windowIds: [1], createdAt: 0,
+      }];
+    }
+
+    it('leaves tabs alone when they sit in a group the user made', async () => {
+      await withFreshdeskRule();
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
+        { id: 1, url: 'https://acceptblue.freshdesk.com/a/tickets/1', index: 0, windowId: 1, groupId: 55, pinned: false },
+        { id: 2, url: 'https://acceptblue.freshdesk.com/a/tickets/2', index: 1, windowId: 1, groupId: 55, pinned: false },
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
+        { id: 55, title: 'My tickets', color: 'orange', collapsed: false, windowId: 1 },
+      ] as chrome.tabGroups.TabGroup[]));
+
+      await bus.dispatch({ action: 'applyRules', windowId: 1 });
+
+      expect(chrome.tabs.group).not.toHaveBeenCalled();
+    });
+
+    it('still groups ungrouped tabs that match', async () => {
+      await withFreshdeskRule();
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
+        { id: 1, url: 'https://acceptblue.freshdesk.com/a/tickets/1', index: 0, windowId: 1, groupId: -1, pinned: false },
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([]));
+      vi.mocked(chrome.tabs.group).mockImplementation(async () => (10));
+
+      await bus.dispatch({ action: 'applyRules', windowId: 1 });
+
+      expect(chrome.tabs.group).toHaveBeenCalledWith(
+        expect.objectContaining({ tabIds: [1] }),
+      );
+    });
+
+    it('still corrects a tab sitting in a different rule-owned group', async () => {
+      const { storageSyncData, storageLocalData } = await import('../../../../tests/setup');
+      storageSyncData['settings'] = { activeWorkspaceId: 'default' };
+      storageLocalData['workspaces'] = [{
+        id: 'default', name: 'Default', icon: '',
+        rules: [
+          { id: 'r1', type: 'domain', pattern: 'acceptblue.freshdesk.com', groupName: 'Freshdesk', color: 'cyan', enabled: true, source: 'user' },
+          { id: 'r2', type: 'domain', pattern: 'github.com', groupName: 'Dev', color: 'blue', enabled: true, source: 'user' },
+        ],
+        priorityRules: [],
+        settings: { defaultSortBy: 'title', defaultSortOrder: 'asc', groupSortMode: 'name', collapseAfterSort: false, removeDupsOnSort: false },
+        windowIds: [1], createdAt: 0,
+      }];
+
+      // A freshdesk tab wrongly sitting in the rule-owned "Dev" group
+      vi.mocked(chrome.tabs.query).mockImplementation(async () => ([
+        { id: 1, url: 'https://acceptblue.freshdesk.com/a/tickets/1', index: 0, windowId: 1, groupId: 60, pinned: false },
+      ] as chrome.tabs.Tab[]));
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
+        { id: 60, title: 'Dev', color: 'blue', collapsed: false, windowId: 1 },
+      ] as chrome.tabGroups.TabGroup[]));
+      vi.mocked(chrome.tabs.group).mockImplementation(async () => (11));
+
+      await bus.dispatch({ action: 'applyRules', windowId: 1 });
+
+      expect(chrome.tabs.group).toHaveBeenCalledWith(
+        expect.objectContaining({ tabIds: [1] }),
+      );
+    });
+
+    it('does not auto-group a tab that navigates inside a hand-made group', async () => {
+      await withFreshdeskRule();
+      vi.mocked(chrome.tabGroups.query).mockImplementation(async () => ([
+        { id: 55, title: 'My tickets', color: 'orange', collapsed: false, windowId: 1 },
+      ] as chrome.tabGroups.TabGroup[]));
+
+      const listener = vi.mocked(chrome.tabs.onUpdated.addListener).mock.calls[0][0];
+      await listener(
+        1,
+        { url: 'https://acceptblue.freshdesk.com/a/tickets/9' } as chrome.tabs.OnUpdatedInfo,
+        { id: 1, url: 'https://acceptblue.freshdesk.com/a/tickets/9', windowId: 1, groupId: 55, pinned: false } as chrome.tabs.Tab,
+      );
+      await new Promise(r => setTimeout(r, 0));
+
+      expect(chrome.tabs.group).not.toHaveBeenCalled();
+    });
+  });
 });

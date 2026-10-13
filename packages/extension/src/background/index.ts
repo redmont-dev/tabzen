@@ -8,12 +8,12 @@ import { registerSearchIndex } from './services/search-index';
 import { registerAnalyticsCollector } from './services/analytics-collector';
 import { registerContextMenus } from './services/context-menus';
 import { registerRulePacks } from './services/rule-packs';
+import { registerTabHistory } from './services/tab-history';
 import { initPortManager } from './ports';
-import { SyncStorage } from '@/data/storage';
-import { DEFAULT_SETTINGS, STORAGE_KEYS } from '@/shared/constants';
+import { getSettings, updateSettings } from '@/data/settings';
+import { TabzenDB } from '@/data/indexed-db';
 import { normalizeUrl } from './utils/url-normalize';
 import type { TabSearchResult } from './services/search-index';
-import type { Settings } from '@/data/types';
 
 const bus = new MessageBus();
 
@@ -23,29 +23,33 @@ registerTabManager(bus, applyRules);
 registerWorkspaceManager(bus, applyRules);
 registerSearchIndex(bus);
 
+// One IndexedDB connection shared by every service. Separate connections to the
+// same database work today, but a future INDEXEDDB_VERSION bump would have each
+// blocking the other's upgrade.
+const db = new TabzenDB();
+const dbReady = db.open();
+
 // Handlers register synchronously and await DB readiness internally, so no
 // message arriving early can hit a missing handler.
-registerAnalyticsCollector(bus);
+registerAnalyticsCollector(bus, db, dbReady);
 
 registerContextMenus(bus);
 registerRulePacks(bus);
+registerTabHistory(bus);
 
-// DriveSync shares the SessionManager's DB instance
-const sessionManager = registerSessionManager(bus);
+const sessionManager = registerSessionManager(bus, db, dbReady);
 registerDriveSync(bus, sessionManager.db, sessionManager.ready);
 
 bus.listen();
 bus.register('ping', async () => ({ ok: true, data: 'pong' }));
 
 bus.register('getSettings', async () => {
-  const settings = await SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+  const settings = await getSettings();
   return { ok: true, data: settings };
 });
 
 bus.register('updateSettings', async (req) => {
-  const current = await SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
-  const merged = { ...current, ...req.settings };
-  await SyncStorage.set(STORAGE_KEYS.SETTINGS, merged);
+  const merged = await updateSettings(current => ({ ...current, ...req.settings }));
 
   // Reconcile auto-save (alarm + close snapshots) whenever its settings change
   if (
@@ -126,6 +130,9 @@ chrome.commands.onCommand.addListener(async (command) => {
     case 'save-session':
       await bus.dispatch({ action: 'saveSession', windowId: window.id });
       break;
+    case 'previous-tab':
+      await bus.dispatch({ action: 'switchToPreviousTab', windowId: window.id });
+      break;
   }
 });
 
@@ -166,7 +173,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   // Remove from pending — we only check once
   pendingLinkTabs.delete(tabId);
 
-  const settings = await SyncStorage.get<Settings>(STORAGE_KEYS.SETTINGS, DEFAULT_SETTINGS);
+  const settings = await getSettings();
   if (!settings.dedupEnabled) return;
 
   // Skip non-http URLs
@@ -179,7 +186,9 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   });
 
   // Find an existing tab with the same normalized URL
-  const allTabs = await chrome.tabs.query({ windowId: tab.windowId });
+  const allTabs = settings.dedupScope === 'all-windows'
+    ? await chrome.tabs.query({})
+    : await chrome.tabs.query({ windowId: tab.windowId });
   for (const existing of allTabs) {
     if (existing.id === tabId) continue; // Skip self
     if (!existing.url || !existing.id) continue;
@@ -197,8 +206,16 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         if (existing.pinned) {
           await chrome.tabs.remove(tabId);
           await chrome.tabs.update(existing.id, { active: true });
+          // Under 'all-windows' the surviving tab may live elsewhere; without
+          // focusing its window the click would appear to do nothing.
+          if (existing.windowId !== tab.windowId) {
+            await chrome.windows.update(existing.windowId, { focused: true });
+          }
         } else {
-          const targetGroupId = existing.groupId;
+          // A group belongs to one window, so the original's group can only be
+          // inherited when both tabs are in the same window.
+          const sameWindow = existing.windowId === tab.windowId;
+          const targetGroupId = sameWindow ? existing.groupId : -1;
           await chrome.tabs.remove(existing.id);
           // Preserve grouping: move the new tab into the original's group.
           if (tab.id != null && targetGroupId != null && targetGroupId !== -1) {
